@@ -1,0 +1,180 @@
+import type {
+  Branch,
+  Commit,
+  Comment,
+  CommentType,
+  DiffOpts,
+  DiffResponse,
+  Reply,
+  Repo,
+  Review,
+  Side,
+  Project,
+  ProjectFolders,
+} from "./types";
+
+// The API defaults author to "agent", so the browser tags its own writes explicitly.
+const REVIEWER = "reviewer";
+
+// Carries the HTTP status so a caller can tell an expected 404 from a real error.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+async function req<T>(url: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(msg, res.status);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+// /api/file and /api/blob share one param build; `ref` matters only to the head side.
+function sideParams(repo: string, path: string, ref: string, side: Side): string {
+  const p = new URLSearchParams({ repo, path, ref });
+  if (side !== "head") p.set("side", side);
+  return p.toString();
+}
+
+export const api = {
+  projects: (signal?: AbortSignal) => req<Project[]>("/api/projects", { signal }),
+  projectReviews: (id: number, signal?: AbortSignal) => req<Review[]>(`/api/projects/${id}/reviews`, { signal }),
+  saveProjectReview: (id: number, scope: { mode?: "changes" | "codebase"; head: string; base: string; from: string; side: Side }) => req<Review>(`/api/projects/${id}/reviews`, { method: "POST", body: JSON.stringify(scope) }),
+  reviewDiff: (id: number) => req<DiffResponse>(`/api/reviews/${id}/diff`),
+  setReviewStatus: (id: number, status: "draft" | "completed") => req<void>(`/api/reviews/${id}/status`, { method: "POST", body: JSON.stringify({ status }) }),
+  addProject: (path: string) => req<Project>("/api/projects", { method: "POST", body: JSON.stringify({ path }) }),
+  removeProject: (id: number) => req<void>(`/api/projects/${id}`, { method: "DELETE" }),
+  projectFolders: (path: string, signal?: AbortSignal) => req<ProjectFolders>(`/api/project-folders?${new URLSearchParams({ path })}`, { signal }),
+  repos: (signal?: AbortSignal) => req<{ repos: Repo[] }>("/api/repos", { signal }),
+
+  branches: (repo: string) => {
+    const p = new URLSearchParams({ repo });
+    return req<{ branches: Branch[] }>(`/api/branches?${p.toString()}`);
+  },
+
+  diff: (repo: string, head: string, opts: DiffOpts) => {
+    const p = new URLSearchParams({ repo, head });
+    if (opts.from && opts.from !== "all") p.set("from", opts.from);
+    if (opts.base) p.set("base", opts.base);
+    if (opts.uncommitted) {
+      p.set("uncommitted", "true");
+      p.set("unstaged", opts.unstaged ? "true" : "false");
+    }
+    return req<DiffResponse>(`/api/diff?${p.toString()}`);
+  },
+
+  files: (repo: string, ref: string) => {
+    const p = new URLSearchParams({ repo, ref });
+    return req<{ files: string[] }>(`/api/files?${p.toString()}`);
+  },
+
+  commits: (repo: string, ref: string, base = "", limit = 50) => {
+    const p = new URLSearchParams({ repo, ref, limit: String(limit) });
+    if (base) p.set("base", base);
+    return req<{ commits: Commit[] }>(`/api/commits?${p.toString()}`);
+  },
+
+  file: (repo: string, path: string, ref: string, side: Side = "head") => {
+    // `worktree` says where the content came *from*: a ref read the ref can't satisfy is served from disk, and the caller must label that.
+    return req<{ path: string; ref: string; content: string; worktree: boolean }>(
+      `/api/file?${sideParams(repo, path, ref, side)}`
+    );
+  },
+
+  blobURL: (repo: string, path: string, ref: string, side: Side = "head") =>
+    `/api/blob?${sideParams(repo, path, ref, side)}`,
+
+  createReview: (repo: string, head: string, base?: string) =>
+    req<Review>("/api/reviews", {
+      method: "POST",
+      body: JSON.stringify({ repo, head, base: base ?? "" }),
+    }),
+
+  getReview: (id: number) => req<Review>(`/api/reviews/${id}`),
+
+  resetReview: (id: number) => req<void>(`/api/reviews/${id}/reset`, { method: "POST" }),
+
+  addComment: (
+    reviewId: number,
+    c: {
+      filePath: string;
+      startLine: number;
+      endLine: number;
+      type: CommentType;
+      body: string;
+      side: Side;
+    }
+  ) =>
+    req<Comment>(`/api/reviews/${reviewId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ ...c, author: REVIEWER }),
+    }),
+
+  // Omitted fields keep their stored value; sending a range would re-anchor the comment.
+  updateComment: (id: number, c: { body: string; type: CommentType }) =>
+    req<Comment>(`/api/comments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(c),
+    }),
+
+  deleteComment: (id: number, opts?: { keepalive?: boolean }) =>
+    req<void>(`/api/comments/${id}`, { method: "DELETE", keepalive: opts?.keepalive }),
+
+  setCommentResolved: (id: number, resolved: boolean) =>
+    req<void>(`/api/comments/${id}/resolved`, {
+      method: "POST",
+      body: JSON.stringify({ resolved }),
+    }),
+
+  addReply: (commentId: number, body: string) =>
+    req<Reply>(`/api/comments/${commentId}/replies`, {
+      method: "POST",
+      body: JSON.stringify({ body, author: REVIEWER }),
+    }),
+
+  updateReply: (id: number, body: string) =>
+    req<Reply>(`/api/replies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body }),
+    }),
+
+  deleteReply: (id: number) => req<void>(`/api/replies/${id}`, { method: "DELETE" }),
+
+  setSummary: (reviewId: number, summary: string) =>
+    req<void>(`/api/reviews/${reviewId}/summary`, {
+      method: "POST",
+      body: JSON.stringify({ summary }),
+    }),
+
+  setReviewed: (reviewId: number, filePaths: string[], reviewed: boolean, side: Side) =>
+    req<void>(`/api/reviews/${reviewId}/reviewed`, {
+      method: "POST",
+      body: JSON.stringify({ filePaths, reviewed, side }),
+    }),
+
+  export: (reviewId: number, instructions?: boolean) => {
+    const p = new URLSearchParams();
+    if (instructions) p.set("instructions", "true");
+    const qs = p.toString();
+    return req<{ markdown: string; filename: string }>(
+      `/api/reviews/${reviewId}/export${qs ? `?${qs}` : ""}`,
+      { method: "POST" }
+    );
+  },
+};

@@ -1,0 +1,87 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { expect, test } from "vitest";
+import type { Comment, Side } from "./types";
+import { commentRef, effectiveLines, effectivePath, lineLabel, sideLabel } from "./types";
+
+// Minimal Comment factory (this file is excluded from the build tsconfig).
+const c = (o: Partial<Comment>): Comment =>
+  ({
+    id: 1,
+    reviewId: 1,
+    filePath: "a.go",
+    startLine: 3,
+    endLine: 3,
+    snippet: "",
+    type: "bug",
+    body: "",
+    author: "reviewer",
+    resolved: false,
+    commitSha: "",
+    side: "head",
+    createdAt: "",
+    updatedAt: "",
+    replies: [],
+    ...o,
+  }) as Comment;
+
+test("effectivePath uses currentFilePath only for a rename-followed move", () => {
+  expect(effectivePath(c({ anchorStatus: "moved", currentFilePath: "b.go" }))).toBe("b.go");
+  // moved within the same file (no currentFilePath) → original path
+  expect(effectivePath(c({ anchorStatus: "moved" }))).toBe("a.go");
+  // currentFilePath is ignored unless the status is moved
+  expect(effectivePath(c({ anchorStatus: "outdated", currentFilePath: "b.go" }))).toBe("a.go");
+  expect(effectivePath(c({ anchorStatus: "current" }))).toBe("a.go");
+  expect(effectivePath(c({}))).toBe("a.go");
+});
+
+test("effectiveLines uses the relocated range only when moved", () => {
+  expect(effectiveLines(c({ anchorStatus: "moved", currentStartLine: 5, currentEndLine: 7 }))).toEqual({
+    start: 5,
+    end: 7,
+  });
+  // currentEndLine falls back to currentStartLine
+  expect(effectiveLines(c({ anchorStatus: "moved", currentStartLine: 5 }))).toEqual({ start: 5, end: 5 });
+  // moved but no relocated line → original range
+  expect(effectiveLines(c({ anchorStatus: "moved", startLine: 2, endLine: 4 }))).toEqual({
+    start: 2,
+    end: 4,
+  });
+  expect(effectiveLines(c({ anchorStatus: "outdated", startLine: 2, endLine: 4 }))).toEqual({
+    start: 2,
+    end: 4,
+  });
+});
+
+test("lineLabel renders a single line or a range off the effective lines", () => {
+  expect(lineLabel(c({ startLine: 3, endLine: 3 }))).toBe("L3");
+  expect(lineLabel(c({ startLine: 2, endLine: 4 }))).toBe("L2–4"); // en-dash
+  expect(lineLabel(c({ anchorStatus: "moved", currentStartLine: 5, currentEndLine: 7 }))).toBe("L5–7");
+});
+
+test("commentRef pairs the effective path with the effective lines, hyphenated", () => {
+  expect(commentRef(c({ startLine: 3, endLine: 3 }))).toBe("a.go:3");
+  expect(commentRef(c({ startLine: 2, endLine: 4 }))).toBe("a.go:2-4");
+  expect(
+    commentRef(
+      c({ anchorStatus: "moved", currentFilePath: "b.go", currentStartLine: 5, currentEndLine: 7 })
+    )
+  ).toBe("b.go:5-7");
+  // an outdated comment has no current home, so it refers to where it was anchored
+  expect(commentRef(c({ anchorStatus: "outdated", startLine: 2, endLine: 4 }))).toBe("a.go:2-4");
+});
+
+// Both wordings reach the same file card: the missing/substituted notes come from this function,
+// while a failed load prints the server's 404 ("<path> does not exist in <side>") verbatim. Nothing
+// but this test stops the two files from naming the same side differently.
+test("sideLabel words every non-head side the way the Rust server's review::side_label does", () => {
+  const rust = readFileSync(join(__dirname, "..", "..", "..", "api", "services", "review", "content.rs"), "utf8");
+  const body = rust.match(/pub fn side_label\([^)]*\) -> &str \{([\s\S]*?)\n\}/);
+  expect(body, "api/services/review/content.rs defines no side_label").not.toBeNull();
+  const cases = [...body![1].matchAll(/Side::(Index|Worktree) => "([^"]+)"/g)];
+  // Head answers with the requested ref; the other sides have fixed wording.
+  expect(cases.length, "expected the index and worktree cases").toBe(2);
+  for (const [, name, wording] of cases) {
+    expect(sideLabel(name.toLowerCase() as Side, "HEAD"), name).toBe(wording);
+  }
+});

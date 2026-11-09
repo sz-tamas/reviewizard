@@ -1,0 +1,206 @@
+import { useEffect, useSyncExternalStore } from "react";
+import type { Comment, CommentType } from "../../api/types";
+
+export type FileDraftTarget =
+  | { kind: "line"; path: string; startLine: number; endLine: number }
+  | { kind: "file"; path: string }
+  | { kind: "reply"; path: string; commentId: number }
+  | { kind: "edit"; path: string; commentId: number; replyId?: number };
+
+export type DraftTarget = FileDraftTarget | { kind: "summary" };
+
+export interface DraftRef {
+  key: string;
+  target: DraftTarget;
+}
+
+export interface Draft extends DraftRef {
+  body: string;
+  type: CommentType;
+}
+
+export interface FileDraft extends Draft {
+  target: FileDraftTarget;
+}
+
+export function isListedDraft(d: Draft): d is FileDraft {
+  return d.target.kind !== "edit" && d.target.kind !== "summary";
+}
+
+export const draftKey = {
+  line: (path: string, startLine: number, endLine: number) => `line:${startLine}-${endLine}:${path}`,
+  file: (path: string) => `file:${path}`,
+  reply: (commentId: number) => `reply:${commentId}`,
+  editComment: (commentId: number) => `edit:${commentId}`,
+  editReply: (replyId: number) => `edit-reply:${replyId}`,
+  summary: () => "summary",
+};
+
+let drafts: ReadonlyMap<string, Draft> = new Map();
+const listeners = new Set<() => void>();
+
+function commit(next: ReadonlyMap<string, Draft>) {
+  drafts = next;
+  for (const l of listeners) l();
+}
+
+function sameDraft(a: Draft, b: Draft): boolean {
+  return (
+    a.body === b.body && a.type === b.type && JSON.stringify(a.target) === JSON.stringify(b.target)
+  );
+}
+
+export function getDraft(key: string): Draft | undefined {
+  return drafts.get(key);
+}
+
+export function getDrafts(): ReadonlyMap<string, Draft> {
+  return drafts;
+}
+
+const rangesCache = new Map<string, { key: string; ranges: { start: number; end: number }[] }>();
+
+// Must return the same array while the path's anchors hold, or useSyncExternalStore re-renders forever.
+function getLineRanges(path: string): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  for (const d of drafts.values()) {
+    if (d.target.kind === "line" && d.target.path === path) {
+      ranges.push({ start: d.target.startLine, end: d.target.endLine });
+    }
+  }
+  const key = ranges.map((r) => `${r.start}-${r.end}`).join(",");
+  const cached = rangesCache.get(path);
+  if (cached && cached.key === key) return cached.ranges;
+  rangesCache.set(path, { key, ranges });
+  return ranges;
+}
+
+export function useLineDraftRanges(path: string): { start: number; end: number }[] {
+  return useSyncExternalStore(subscribe, () => getLineRanges(path));
+}
+
+export function putDraft(draft: Draft): void {
+  const prev = drafts.get(draft.key);
+  if (prev && sameDraft(prev, draft)) return;
+  const next = new Map(drafts);
+  next.set(draft.key, draft);
+  commit(next);
+}
+
+export function dropDraft(key: string): void {
+  if (!drafts.has(key)) return;
+  const next = new Map(drafts);
+  next.delete(key);
+  commit(next);
+}
+
+const discardListeners = new Set<(draft: Draft) => void>();
+
+// Unlike dropDraft, tells the composer's host to close it: an open composer would otherwise
+// keep the text and put the draft straight back on its next render.
+export function discardDraft(key: string): void {
+  const draft = drafts.get(key);
+  if (!draft) return;
+  dropDraft(key);
+  for (const l of discardListeners) l(draft);
+}
+
+export function onDraftDiscarded(l: (draft: Draft) => void): () => void {
+  discardListeners.add(l);
+  return () => discardListeners.delete(l);
+}
+
+interface LiveIds {
+  roots: Set<number>;
+  replies: Set<number>;
+}
+
+let lastSeen: LiveIds | null = null;
+
+let shownReview: number | null = null;
+const parked = new Map<number, ReadonlyMap<string, Draft>>();
+
+export function showDraftsFor(reviewId: number | null): void {
+  if (reviewId === shownReview) return;
+  if (shownReview !== null && drafts.size > 0) parked.set(shownReview, drafts);
+  shownReview = reviewId;
+  lastSeen = null;
+  const restored = reviewId === null ? undefined : parked.get(reviewId);
+  if (reviewId !== null) parked.delete(reviewId);
+  if (restored || drafts.size > 0) commit(restored ?? new Map());
+}
+
+function vanished(id: number, now: Set<number>, before: Set<number> | undefined): boolean {
+  return !now.has(id) && (!before || before.has(id));
+}
+
+function targetsGone(t: DraftTarget, now: LiveIds, before: LiveIds | null): boolean {
+  if (t.kind !== "reply" && t.kind !== "edit") return false;
+  if (vanished(t.commentId, now.roots, before?.roots)) return true;
+  return t.kind === "edit" && t.replyId !== undefined && vanished(t.replyId, now.replies, before?.replies);
+}
+
+// Only an id the previous read had counts as gone: a read begun before a comment was posted would
+// otherwise drop the reply already being typed under it.
+export function pruneDrafts(reviewId: number, comments: readonly Comment[]): void {
+  if (reviewId !== shownReview) return;
+  const now: LiveIds = {
+    roots: new Set(comments.map((c) => c.id)),
+    replies: new Set(comments.flatMap((c) => c.replies.map((r) => r.id))),
+  };
+  const next = new Map(drafts);
+  for (const [key, d] of drafts) {
+    if (targetsGone(d.target, now, lastSeen)) next.delete(key);
+  }
+  lastSeen = now;
+  if (next.size !== drafts.size) commit(next);
+}
+
+export function clearDrafts(): void {
+  shownReview = null;
+  lastSeen = null;
+  parked.clear();
+  if (drafts.size > 0) commit(new Map());
+}
+
+export function draftDomId(key: string): string {
+  return `draft-${key}`;
+}
+
+let edited: { key: string; ids: ReadonlySet<number> } = { key: "", ids: new Set() };
+
+// Must return the same Set while the ids hold, or useSyncExternalStore re-renders forever.
+function getEditedCommentIds(): ReadonlySet<number> {
+  const ids = [...drafts.values()]
+    .flatMap((d) => (d.target.kind === "edit" ? [d.target.commentId] : []))
+    .sort((a, b) => a - b);
+  const key = [...new Set(ids)].join(",");
+  if (key !== edited.key) edited = { key, ids: new Set(ids) };
+  return edited.ids;
+}
+
+function subscribe(l: () => void): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+
+export function useDrafts(): ReadonlyMap<string, Draft> {
+  return useSyncExternalStore(subscribe, getDrafts);
+}
+
+export function useEditedCommentIds(): ReadonlySet<number> {
+  return useSyncExternalStore(subscribe, getEditedCommentIds);
+}
+
+export function useLeaveWarning(): void {
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (drafts.size === 0 && parked.size === 0) return;
+      e.preventDefault();
+      // Older browsers ignore preventDefault and prompt only for a non-empty returnValue.
+      e.returnValue = "unposted";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+}

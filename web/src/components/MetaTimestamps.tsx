@@ -1,0 +1,27 @@
+import { absoluteTime, relativeTime, wasEdited } from "../utils/time";
+
+export function MetaTimestamps({
+  author,
+  createdAt,
+  updatedAt,
+}: {
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+}) {
+  return (
+    <>
+      <span className="meta-author">{author}</span>
+      {createdAt && (
+        <span className="muted" title={absoluteTime(createdAt)}>
+          {relativeTime(createdAt)}
+        </span>
+      )}
+      {wasEdited(createdAt, updatedAt) && (
+        <span className="muted" title={`edited ${absoluteTime(updatedAt)}`}>
+          (edited)
+        </span>
+      )}
+    </>
+  );
+}

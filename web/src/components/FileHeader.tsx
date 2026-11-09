@@ -1,0 +1,142 @@
+import type { DiffStat } from "../components/diff/diffStats";
+import type { Layout } from "../components/diff/diffRows";
+import type { FileStatus } from "../api/types";
+import { Chevron } from "./Chevron";
+import { CommentCount } from "./CommentCount";
+import { CopyButton } from "./CopyButton";
+import { DiffStatBadge } from "./DiffStatBadge";
+import { ViewToggle } from "./ViewToggle";
+
+interface Props {
+  status: FileStatus;
+  path: string;
+  stat: DiffStat;
+  generated: boolean;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  openCount: number;
+  reviewed: boolean;
+  onToggleReviewed: (reviewed: boolean) => void;
+  svg: boolean;
+  svgAsImage: boolean;
+  onSvgAsImage: (asImage: boolean) => void;
+  markdown: boolean;
+  mdRendered: boolean;
+  onMdRendered: (rendered: boolean) => void;
+  showModeToggle: boolean;
+  mode: "changed" | "full";
+  onSwitchMode: (mode: "changed" | "full") => void;
+  showLayoutToggle: boolean;
+  layout: Layout;
+  onLayout: (layout: Layout) => void;
+}
+
+// The file card's header row: collapse, status + path, counts, reviewed checkbox, and the view toggles.
+export function FileHeader({
+  status,
+  path,
+  stat,
+  generated,
+  collapsed,
+  onToggleCollapsed,
+  openCount,
+  reviewed,
+  onToggleReviewed,
+  svg,
+  svgAsImage,
+  onSvgAsImage,
+  markdown,
+  mdRendered,
+  onMdRendered,
+  showModeToggle,
+  mode,
+  onSwitchMode,
+  showLayoutToggle,
+  layout,
+  onLayout,
+}: Props) {
+  return (
+    <div className="file-header">
+      <button
+        className="file-toggle"
+        onClick={onToggleCollapsed}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? "Expand file" : "Collapse file"}
+        title={collapsed ? "Expand file" : "Collapse file"}
+      >
+        <Chevron open={!collapsed} />
+      </button>
+      <span className={`status status-${status}`}>{status}</span>
+      <span className="file-path" title={path}>
+        {path}
+      </span>
+      <CopyButton
+        icon
+        className="btn-icon copy-icon"
+        idleLabel="Copy path"
+        title="Copy the file path"
+        text={path}
+      />
+      {generated && (
+        <span className="gen-badge" title="Generated file — starts collapsed">
+          generated
+        </span>
+      )}
+      <DiffStatBadge stat={stat} />
+      {openCount > 0 && <CommentCount n={openCount} />}
+      <label className="viewed-check" title="Mark file as reviewed">
+        <input type="checkbox" checked={reviewed} onChange={(e) => onToggleReviewed(e.target.checked)} />
+        Reviewed
+      </label>
+      {svg && (
+        <ViewToggle
+          ariaLabel="SVG view"
+          value={svgAsImage ? "image" : "text"}
+          onChange={(v) => onSvgAsImage(v === "image")}
+          options={[
+            { value: "text", label: "Text" },
+            { value: "image", label: "Image" },
+          ]}
+        />
+      )}
+      {markdown && (
+        <ViewToggle
+          ariaLabel="Markdown view"
+          value={mdRendered ? "rendered" : "code"}
+          onChange={(v) => onMdRendered(v === "rendered")}
+          options={[
+            { value: "code", label: "Code" },
+            { value: "rendered", label: "Rendered" },
+          ]}
+        />
+      )}
+      {showLayoutToggle && (
+        <ViewToggle
+          ariaLabel="Diff layout"
+          value={layout}
+          onChange={onLayout}
+          options={[
+            { value: "unified", label: "Unified" },
+            {
+              value: "split",
+              label: "Split",
+              disabled: mode === "full",
+              title: mode === "full" ? "Full view shows the new file only" : undefined,
+            },
+          ]}
+        />
+      )}
+      {showModeToggle && (
+        <ViewToggle
+          ariaLabel="Diff view"
+          value={mode}
+          onChange={onSwitchMode}
+          options={[
+            { value: "changed", label: "Changed" },
+            { value: "full", label: "Full" },
+          ]}
+        />
+      )}
+    </div>
+  );
+}

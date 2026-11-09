@@ -1,0 +1,131 @@
+[tools]
+node = "24.13.1"
+pnpm = "10.30.1"
+rust = "1.94.1"
+process-compose = "1.116.0"
+"cargo:bacon" = "3.22.0"
+
+[env]
+RUSTUP_TOOLCHAIN = "1.94.1"
+
+[tasks.install]
+description = "Install pinned tools, Rust components and locked application dependencies"
+dir = "{{config_root}}"
+run = [
+  "mise install",
+  "mise exec -- rustup component add rustfmt clippy",
+  "mise run deps",
+  "mise exec -- cargo fetch --locked",
+]
+
+[tasks.deps]
+hide = true
+description = "Install locked frontend dependencies without lifecycle scripts"
+dir = "{{config_root}}/web"
+run = "pnpm install --frozen-lockfile --ignore-scripts"
+
+[tasks."build:web"]
+hide = true
+description = "Build frontend assets"
+depends = ["deps"]
+dir = "{{config_root}}/web"
+run = "pnpm run build"
+
+[tasks.build]
+hide = true
+description = "Build backend and frontend separately"
+depends = ["build:rust", "build:web"]
+dir = "{{config_root}}"
+
+[tasks.start]
+description = "Run backend and frontend with process-compose"
+depends = ["deps"]
+dir = "{{config_root}}"
+raw = true
+run = "process-compose up"
+
+[tasks."dev:backend"]
+hide = true
+description = "Run Rust backend for local development"
+dir = "{{config_root}}"
+run = 'cargo run --locked -- --root "${REVIEWIZARD_ROOT:-.}" --port "${REVIEWIZARD_BACKEND_PORT:-7777}"'
+
+[tasks.dev]
+description = "Watch backend with bacon and frontend with Vite"
+depends = ["deps"]
+dir = "{{config_root}}"
+raw = true
+run = "process-compose -f process-compose.yaml -f process-compose.dev.yaml up"
+
+[tasks."dev:backend:watch"]
+hide = true
+description = "Rebuild and restart the Rust backend on changes with bacon"
+dir = "{{config_root}}"
+run = 'bacon --headless run -- --root "${REVIEWIZARD_ROOT:-.}" --port "${REVIEWIZARD_BACKEND_PORT:-7777}"'
+
+[tasks."dev:frontend"]
+hide = true
+description = "Run Vite frontend for local development"
+dir = "{{config_root}}/web"
+run = 'pnpm run dev --host 127.0.0.1 --port "${REVIEWIZARD_FRONTEND_PORT:-5173}" --strictPort'
+
+[tasks.serve]
+hide = true
+description = "Run Rust backend"
+dir = "{{config_root}}"
+run = "cargo run --locked --"
+
+[tasks."build:rust"]
+hide = true
+description = "Build Rust backend"
+dir = "{{config_root}}"
+run = "cargo build --locked"
+
+[tasks."start:rust"]
+hide = true
+description = "Run Rust with server flags"
+dir = "{{config_root}}"
+run = "cargo run --locked --"
+
+[tasks."check:rust"]
+hide = true
+description = "Format check, lint and test the Rust backend"
+dir = "{{config_root}}"
+run = ["cargo fmt --all -- --check", "cargo clippy --locked --all-targets -- -D warnings", "cargo test --locked"]
+
+[tasks."release:rust"]
+hide = true
+description = "Build optimized Rust backend"
+dir = "{{config_root}}"
+run = "cargo build --release --locked"
+
+[tasks."serve:rust"]
+hide = true
+description = "Run Rust backend"
+dir = "{{config_root}}"
+run = "cargo run --locked --"
+
+[tasks."check:default"]
+hide = true
+description = "Standalone release, persistence, backup and SSE acceptance (POSIX)"
+depends = ["release:rust"]
+dir = "{{config_root}}"
+run = "python3 api/services/tests/acceptance/run.py --binary ./target/release/reviewizard --report target/acceptance/results.json"
+
+[tasks.check]
+hide = true
+description = "Check Rust, frontend and standalone application acceptance"
+depends = ["check:rust", "check:web", "check:default"]
+
+[tasks."check:web"]
+hide = true
+description = "Test frontend"
+depends = ["deps"]
+dir = "{{config_root}}"
+run = "pnpm --dir web test"
+
+[tasks.test]
+description = "Run Rust and frontend tests"
+depends = ["check:web"]
+dir = "{{config_root}}"
+run = "cargo test --locked"

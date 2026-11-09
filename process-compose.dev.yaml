@@ -1,0 +1,6 @@
+version: "0.5"
+
+# Keep the normal startup environment, readiness probes and frontend API proxy.
+processes:
+  backend:
+    command: mise run dev:backend:watch

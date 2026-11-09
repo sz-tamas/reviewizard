@@ -1,0 +1,9 @@
+[jobs.run]
+command = ["cargo", "run", "--locked", "--"]
+need_stdout = true
+allow_warnings = true
+background = false
+on_change_strategy = "kill_then_restart"
+# Rust sources and the build script live under api/, rather than src/.
+default_watch = false
+watch = ["api", "Cargo.toml", "Cargo.lock"]

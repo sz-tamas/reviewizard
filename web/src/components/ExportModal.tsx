@@ -1,0 +1,97 @@
+import { useEffect, useState } from "react";
+import { api } from "../api/api";
+import { LS, getBool, setBool } from "../preferences/storage";
+import { CopyButton } from "./CopyButton";
+import { Markdown } from "./Markdown";
+import { Modal } from "./Modal";
+import { ViewToggle } from "./ViewToggle";
+
+interface Props {
+  reviewId: number;
+  onClose: () => void;
+}
+
+export function ExportModal({ reviewId, onClose }: Props) {
+  const [markdown, setMarkdown] = useState("");
+  const [filename, setFilename] = useState("review.md");
+  const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"preview" | "raw">("preview");
+  const [instructions, setInstructions] = useState(() => getBool(LS.exportInstructions));
+
+  useEffect(() => {
+    // `ignore` drops an out-of-order response: the instructions checkbox refires this.
+    let ignore = false;
+    api
+      .export(reviewId, instructions)
+      .then((r) => {
+        if (ignore) return;
+        setError(null);
+        setMarkdown(r.markdown);
+        setFilename(r.filename);
+      })
+      .catch((e) => {
+        if (!ignore) setError((e as Error).message);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [reviewId, instructions]);
+
+  function download() {
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Modal
+      onClose={onClose}
+      title="Export review"
+      controls={
+        <ViewToggle
+          ariaLabel="Export view"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "preview", label: "Preview" },
+            { value: "raw", label: "Raw" },
+          ]}
+        />
+      }
+      actions={
+        <>
+          <label
+            className="checkbox"
+            title="Append instructions telling a coding agent how to reply to these comments over HTTP"
+          >
+            <input
+              type="checkbox"
+              checked={instructions}
+              onChange={(e) => {
+                setInstructions(e.target.checked);
+                setBool(LS.exportInstructions, e.target.checked);
+              }}
+            />
+            agent reply instructions
+          </label>
+          <CopyButton className="btn copy-btn" text={markdown} idleLabel="Copy markdown" />
+          <button className="btn btn-primary" onClick={download}>
+            Download .md
+          </button>
+        </>
+      }
+    >
+      {error ? (
+        <p className="error">{error}</p>
+      ) : view === "preview" ? (
+        <Markdown className="markdown-body" source={markdown} softBreaks={false} />
+      ) : (
+        <pre className="markdown-preview">{markdown}</pre>
+      )}
+    </Modal>
+  );
+}

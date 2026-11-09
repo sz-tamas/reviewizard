@@ -1,0 +1,629 @@
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+// DiffView renders the full-file source it fetches separately from the diff, and keys
+// the add/context syntax tokens by new-side line number — so a source that no longer
+// matches the hunks on screen shows the wrong text against the current line numbers.
+// These cover the invalidation of that cached source.
+vi.mock("../api/api", () => ({
+  ApiError: class extends Error {
+    constructor(
+      m: string,
+      readonly status: number
+    ) {
+      super(m);
+    }
+  },
+  api: { file: vi.fn() },
+}));
+// No grammar: rows render raw text, so assertions read the DOM directly.
+// highlightBlocks is stubbed too, since a rendered comment thread runs its body
+// through Markdown, which chains it after markdown-it.
+vi.mock("../rendering/highlight", () => ({
+  // Only a .ts fixture tokenizes; the rest of the file's fixtures are .txt.
+  resolveLang: (p: string) => (p.endsWith(".ts") ? "typescript" : null),
+  tokenize: vi.fn(async () => null),
+  highlightBlocks: vi.fn(async () => null),
+  langForInfo: () => null,
+}));
+vi.mock("../rendering/mermaid", () => ({ renderMermaid: vi.fn(async () => null) }));
+
+import { api } from "../api/api";
+import { tokenize } from "../rendering/highlight";
+import { DEFAULT_PREF, setThemePref } from "../preferences/theme";
+import { searchCells } from "../hooks/useOccurrenceHighlight";
+import { setDefaultLayout } from "../preferences/diffLayout";
+import { DiffView } from "./DiffView";
+import type { FileDiff } from "../api/types";
+
+const props = {
+  repo: "A",
+  baseRef: "base",
+  side: "head" as const,
+  comments: [],
+  onAddComment: async () => true,
+  actions: {} as never,
+  reviewed: false,
+  onToggleReviewed: () => {},
+  expandTarget: null,
+  expandComment: null,
+  showFullSignal: null,
+  activeComment: null,
+};
+
+const content = (text: string, worktree = false) => ({
+  path: "a.txt",
+  ref: "r",
+  content: `${text}\n`,
+  worktree,
+});
+
+beforeEach(() => vi.clearAllMocks());
+afterEach(() => {
+  setThemePref(DEFAULT_PREF);
+  act(() => setDefaultLayout("unified"));
+});
+
+// A file the branch didn't touch, opened to comment on, is synthesized with no hunks
+// and a fixed status/path — so a key built from those alone never moves, and the card
+// (which lives entirely in Full view) kept showing the previous branch's text.
+test("an unchanged-file card refetches its source when head switches", async () => {
+  const unchanged = (): FileDiff => ({ oldPath: "a.txt", newPath: "a.txt", status: "unchanged", hunks: [] });
+  vi.mocked(api.file).mockResolvedValue(content("ON-FEATURE"));
+
+  const { rerender } = render(<DiffView {...props} file={unchanged()} headRef="feature" />);
+  await waitFor(() => expect(screen.getByText("ON-FEATURE")).toBeTruthy());
+
+  vi.mocked(api.file).mockResolvedValue(content("ON-OTHER"));
+  rerender(<DiffView {...props} file={unchanged()} headRef="other" />);
+
+  await waitFor(() => expect(screen.getByText("ON-OTHER")).toBeTruthy());
+  expect(screen.queryByText("ON-FEATURE")).toBeNull();
+});
+
+// Same key, same hole, reached by switching repos: two repos can hold the same path.
+test("an unchanged-file card refetches its source when the repo switches", async () => {
+  const unchanged = (): FileDiff => ({ oldPath: "a.txt", newPath: "a.txt", status: "unchanged", hunks: [] });
+  vi.mocked(api.file).mockResolvedValue(content("IN-REPO-A"));
+
+  const { rerender } = render(<DiffView {...props} file={unchanged()} headRef="main" repo="A" />);
+  await waitFor(() => expect(screen.getByText("IN-REPO-A")).toBeTruthy());
+
+  vi.mocked(api.file).mockResolvedValue(content("IN-REPO-B"));
+  rerender(<DiffView {...props} file={unchanged()} headRef="main" repo="B" />);
+
+  await waitFor(() => expect(screen.getByText("IN-REPO-B")).toBeTruthy());
+});
+
+// A ref read the ref couldn't satisfy is served from disk. The hunks still come from
+// the ref, so that text may not match them — say so rather than let it read as the
+// ref's content, which is the same wrong-lines confusion with no visible cause.
+test("a working-tree substitution is labelled, an honest ref read is not", async () => {
+  const file = (): FileDiff => ({ oldPath: "a.txt", newPath: "a.txt", status: "unchanged", hunks: [] });
+  vi.mocked(api.file).mockResolvedValue(content("UNCOMMITTED", true));
+
+  const { rerender } = render(<DiffView {...props} file={file()} headRef="main" />);
+  await waitFor(() => expect(screen.getByText(/showing the working-tree copy/)).toBeTruthy());
+
+  // The same content served from the ref it was asked for carries no note.
+  vi.mocked(api.file).mockResolvedValue(content("COMMITTED", false));
+  rerender(<DiffView {...props} file={file()} headRef="other" />);
+  await waitFor(() => expect(screen.getByText("COMMITTED")).toBeTruthy());
+  expect(screen.queryByText(/showing the working-tree copy/)).toBeNull();
+});
+
+// Asking for the working tree and getting it is not a substitution — the note is for
+// the surprise, so it must not fire on the side the card requested.
+test("an explicit working-tree read is not labelled a substitution", async () => {
+  const file = (): FileDiff => ({ oldPath: "a.txt", newPath: "a.txt", status: "unchanged", hunks: [] });
+  vi.mocked(api.file).mockResolvedValue(content("ON-DISK", true));
+
+  render(<DiffView {...props} file={file()} headRef="main" side="worktree" />);
+  await waitFor(() => expect(screen.getByText("ON-DISK")).toBeTruthy());
+  expect(screen.queryByText(/showing the working-tree copy/)).toBeNull();
+});
+
+// The source cache still has to survive a diff refetch that changed nothing, or every
+// live-sync ping would refetch (and flash) every expanded file in the review.
+test("a diff refetch with identical hunks keeps the cached source", async () => {
+  const file = (): FileDiff => ({
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [{ header: "@@ -1 +1 @@", lines: [{ kind: "add", newLine: 1, content: "SAME" }] }],
+  });
+  vi.mocked(api.file).mockResolvedValue(content("SAME"));
+
+  const { rerender } = render(<DiffView {...props} file={file()} headRef="main" />);
+  await waitFor(() => expect(vi.mocked(api.file).mock.calls.length).toBe(1));
+
+  rerender(<DiffView {...props} file={file()} headRef="main" />); // new object, same content
+  await new Promise((r) => setTimeout(r, 0));
+  expect(vi.mocked(api.file).mock.calls.length).toBe(1);
+});
+
+// The word-diff ranges are computed from the hunks but painted onto the rendered
+// rows, so the two can drift apart independently of wordDiff.ts being correct.
+test("a paired -/+ line marks only the words that changed", async () => {
+  const file = (): FileDiff => ({
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [
+      {
+        header: "@@ -1 +1 @@",
+        lines: [
+          { kind: "del", oldLine: 1, content: "const total = price * quantity;" },
+          { kind: "add", newLine: 1, content: "const total = price * amount;" },
+        ],
+      },
+    ],
+  });
+  vi.mocked(api.file).mockResolvedValue(content("const total = price * amount;"));
+
+  const { container } = render(<DiffView {...props} file={file()} headRef="main" />);
+  await waitFor(() => expect(container.querySelectorAll(".word-diff").length).toBeGreaterThan(0));
+
+  const marked = [...container.querySelectorAll(".word-diff")].map((el) => el.textContent);
+  expect(marked).toEqual(["quantity", "amount"]);
+  // The rest of the line is still rendered, just unmarked.
+  expect(container.querySelector(".row-add")?.textContent).toContain("const total = price *");
+});
+
+// The expanders read the hidden lines out of the full file the card already
+// fetched, and place them against the hunks — the same source/hunks pairing the
+// tests above guard, so a gap misplaced by one prints the wrong text at a line.
+const numbered = (n: number) => Array.from({ length: n }, (_, i) => `L${i + 1}`).join("\n");
+
+const modifiedAt = (line: number): FileDiff => ({
+  oldPath: "a.txt",
+  newPath: "a.txt",
+  status: "modified",
+  hunks: [
+    {
+      header: `@@ -${line} +${line} @@`,
+      lines: [
+        { kind: "del", oldLine: line, content: "gone" },
+        { kind: "add", newLine: line, content: `L${line}` },
+      ],
+    },
+  ],
+});
+
+test("a hidden region expands a step at a time, from the end nearest its hunk", async () => {
+  vi.mocked(api.file).mockResolvedValue(content(numbered(100)));
+
+  render(<DiffView {...props} file={modifiedAt(60)} headRef="main" />);
+  await waitFor(() => expect(screen.getByText("Show all 59 hidden lines")).toBeTruthy());
+  expect(screen.getByText("Show all 40 hidden lines")).toBeTruthy(); // too short to step
+  // The file's top edge bounds the region above the hunk, so it only grows up out of the hunk.
+  expect(screen.queryByText("↓ 20 more")).toBeNull();
+  fireEvent.click(screen.getByText("↑ 20 more"));
+
+  expect(screen.getByText("L59")).toBeTruthy(); // revealed up against the hunk
+  expect(screen.queryByText("L39")).toBeNull(); // still hidden, further from it
+  expect(screen.getByText("Show all 39 hidden lines")).toBeTruthy();
+  expect(screen.queryByText("↑ 20 more")).toBeNull();
+});
+
+test("a fully revealed region drops its bar and the hunk header with it", async () => {
+  vi.mocked(api.file).mockResolvedValue(content(numbered(30)));
+
+  render(<DiffView {...props} file={modifiedAt(5)} headRef="main" />);
+  await waitFor(() => expect(screen.getByText("Show all 4 hidden lines")).toBeTruthy());
+  expect(screen.getByText("@@ -5 +5 @@")).toBeTruthy();
+
+  fireEvent.click(screen.getByText("Show all 4 hidden lines"));
+
+  expect(screen.getByText("L1")).toBeTruthy();
+  // The lines now run continuously into the hunk, so the header says nothing.
+  expect(screen.queryByText("@@ -5 +5 @@")).toBeNull();
+});
+
+test("a revealed line carries the old-side number its region runs at", async () => {
+  const added: FileDiff = {
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [
+      {
+        header: "@@ -9,0 +10,3 @@",
+        lines: [
+          { kind: "add", newLine: 10, content: "L10" },
+          { kind: "add", newLine: 11, content: "L11" },
+          { kind: "add", newLine: 12, content: "L12" },
+        ],
+      },
+    ],
+  };
+  vi.mocked(api.file).mockResolvedValue(content(numbered(100)));
+
+  const { container } = render(<DiffView {...props} file={added} headRef="main" />);
+  await waitFor(() => expect(screen.getByText("↓ 20 more")).toBeTruthy());
+  fireEvent.click(screen.getByText("↓ 20 more"));
+
+  const row = [...container.querySelectorAll("tr")].find(
+    (tr) => tr.querySelector(".line-content")?.textContent?.trim() === "L13"
+  );
+  const gutters = row?.querySelectorAll(".gutter");
+  // Three lines were added above, so the new side runs three ahead of the old.
+  expect(gutters?.[0].textContent).toBe("10");
+  expect(gutters?.[1].textContent).toBe("13");
+});
+
+// Two lines that merely sit next to each other in a hunk aren't an edit of one
+// another; marking their few shared tokens would be worse than marking nothing.
+test("an unrelated -/+ pair is left unmarked", async () => {
+  const file = (): FileDiff => ({
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [
+      {
+        header: "@@ -1 +1 @@",
+        lines: [
+          { kind: "del", oldLine: 1, content: "    return err" },
+          { kind: "add", newLine: 1, content: "    logger.debug(payload, ctx)" },
+        ],
+      },
+    ],
+  });
+  vi.mocked(api.file).mockResolvedValue(content("    logger.debug(payload, ctx)"));
+
+  const { container } = render(<DiffView {...props} file={file()} headRef="main" />);
+  await waitFor(() => expect(screen.getAllByText(/logger\.debug/).length).toBeGreaterThan(0));
+  expect(container.querySelectorAll(".word-diff").length).toBe(0);
+});
+
+// A file the diff *did* touch can carry no hunks at all — a pure rename, a mode-only
+// change, an empty added file — and Changed view builds its rows from the hunks, so
+// the card came out blank: a file counted in the review with nothing to show for it.
+test("a hunkless changed file says why its card is empty", async () => {
+  vi.mocked(api.file).mockResolvedValue(content("x"));
+  const renamed: FileDiff = { oldPath: "old.txt", newPath: "new.txt", status: "renamed", hunks: [] };
+
+  render(<DiffView {...props} file={renamed} headRef="feature" />);
+
+  await waitFor(() => expect(screen.getByText("Renamed with no content changes.")).toBeTruthy());
+});
+
+// The synthetic card for a file opened only to comment on is hunkless too, but it
+// lives in Full view and renders the whole file — nothing to explain there.
+test("a file opened only to comment on gets no empty-card note", async () => {
+  vi.mocked(api.file).mockResolvedValue(content("WHOLE-FILE"));
+  const opened: FileDiff = { oldPath: "a.txt", newPath: "a.txt", status: "unchanged", hunks: [] };
+
+  render(<DiffView {...props} file={opened} headRef="feature" />);
+
+  await waitFor(() => expect(screen.getByText("WHOLE-FILE")).toBeTruthy());
+  expect(screen.queryByText(/no content changes/i)).toBeNull();
+});
+
+// Line commenting anchors to the new side, so a deleted file — every row a deletion,
+// with no new-side line to click — had no way to take a comment at all. Reviewing a
+// deletion is ordinary ("why did this go?"), and the file-level anchor the store,
+// API and export already support was reachable only from the media and markdown
+// views. Both gaps are the one missing surface.
+test("a deleted file can take a file-level comment", async () => {
+  const deleted: FileDiff = {
+    oldPath: "gone.txt",
+    newPath: "",
+    status: "deleted",
+    hunks: [
+      {
+        header: "@@ -1,2 +0,0 @@",
+        lines: [
+          { kind: "del", oldLine: 1, content: "one" },
+          { kind: "del", oldLine: 2, content: "two" },
+        ],
+      },
+    ],
+  };
+  const onAddComment = vi.fn(async () => true);
+  render(<DiffView {...props} file={deleted} headRef="feature" onAddComment={onAddComment} />);
+
+  fireEvent.click(screen.getByText("+ Add file comment"));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "why was this removed?" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
+
+  await waitFor(() => expect(onAddComment).toHaveBeenCalled());
+  expect(onAddComment.mock.calls[0][0]).toMatchObject({
+    // The old path: a deleted file has no new side to name it by.
+    filePath: "gone.txt",
+    startLine: 0,
+    endLine: 0,
+  });
+});
+
+// The same surface is what lets any source file carry a remark about itself, rather
+// than forcing it onto an arbitrary line.
+test("a source file can take a file-level comment", async () => {
+  const modified: FileDiff = {
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [{ header: "@@ -1 +1 @@", lines: [{ kind: "add", newLine: 1, content: "x" }] }],
+  };
+  vi.mocked(api.file).mockResolvedValue(content("x"));
+  const onAddComment = vi.fn(async () => true);
+  render(<DiffView {...props} file={modified} headRef="feature" onAddComment={onAddComment} />);
+
+  fireEvent.click(screen.getByText("+ Add file comment"));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "this file should not exist" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
+
+  await waitFor(() => expect(onAddComment).toHaveBeenCalled());
+  expect(onAddComment.mock.calls[0][0]).toMatchObject({ filePath: "a.txt", startLine: 0, endLine: 0 });
+});
+
+// A line-0 comment belongs to the file, so it renders in the file block below the
+// table — not in the leftover bucket, which is for comments whose *line* isn't on
+// screen. Keeping them apart is what stops a file remark from reading as a stranded
+// line comment.
+test("existing file-level comments render below the table, not as leftovers", async () => {
+  const modified: FileDiff = {
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [{ header: "@@ -1 +1 @@", lines: [{ kind: "add", newLine: 1, content: "x" }] }],
+  };
+  const fileComment = {
+    id: 7,
+    reviewId: 1,
+    filePath: "a.txt",
+    startLine: 0,
+    endLine: 0,
+    snippet: "",
+    type: "bug" as const,
+    body: "whole-file remark",
+    author: "reviewer",
+    resolved: false,
+    commitSha: "",
+    worktree: false,
+    createdAt: "",
+    updatedAt: "",
+    replies: [],
+  };
+  vi.mocked(api.file).mockResolvedValue(content("x"));
+  render(
+    <DiffView
+      {...props}
+      file={modified}
+      headRef="feature"
+      comments={[fileComment]}
+      actions={{ onEdit: vi.fn(), onDelete: vi.fn(), onReply: vi.fn(), onResolve: vi.fn() } as never}
+    />
+  );
+
+  const body = await screen.findByText("whole-file remark");
+  expect(body.closest(".file-comments")).not.toBeNull();
+  expect(body.closest("table")).toBeNull();
+});
+
+// Shiki tokens carry the theme's resolved colors, so the cached tokens are only good
+// for the theme they were cut under: a switch has to re-tokenize the same source.
+test("a theme switch re-tokenizes the source under the new theme", async () => {
+  const file = (): FileDiff => ({ oldPath: "a.ts", newPath: "a.ts", status: "unchanged", hunks: [] });
+  vi.mocked(api.file).mockResolvedValue({ ...content("const a = 1;"), path: "a.ts" });
+  render(<DiffView {...props} headRef="feature" file={file()} />);
+  await waitFor(() =>
+    expect(vi.mocked(tokenize)).toHaveBeenCalledWith("const a = 1;", "typescript", "github-dark")
+  );
+
+  act(() => setThemePref("github-light"));
+  await waitFor(() =>
+    expect(vi.mocked(tokenize)).toHaveBeenCalledWith("const a = 1;", "typescript", "github-light")
+  );
+  // Same source both times — only the theme moved, so the file wasn't refetched.
+  expect(vi.mocked(api.file).mock.calls.length).toBe(1);
+});
+
+// A lockfile or a dist/ bundle is noise on an agent's branch: the card opens collapsed and says
+// why, but nothing is hidden — the header still expands it and it still takes comments.
+test("a generated file starts collapsed and is labelled", async () => {
+  const gen = (): FileDiff => ({
+    oldPath: "bun.lock",
+    newPath: "bun.lock",
+    status: "modified",
+    generated: true,
+    hunks: [{ header: "@@ -1 +1 @@", lines: [{ kind: "add", newLine: 1, content: "dep" }] }],
+  });
+  vi.mocked(api.file).mockResolvedValue(content("dep"));
+
+  render(<DiffView {...props} file={gen()} headRef="main" />);
+
+  expect(screen.getByText("generated")).toBeTruthy();
+  expect(screen.queryByText("dep")).toBeNull();
+
+  fireEvent.click(screen.getByTitle("Expand file"));
+  await waitFor(() => expect(screen.getByText("dep")).toBeTruthy());
+});
+
+// The same file without the flag opens normally, so the collapse is the flag's doing and not
+// something else about a one-line diff.
+test("an ordinary file of the same shape opens", async () => {
+  const plain = (): FileDiff => ({
+    oldPath: "bun.lock",
+    newPath: "bun.lock",
+    status: "modified",
+    hunks: [{ header: "@@ -1 +1 @@", lines: [{ kind: "add", newLine: 1, content: "dep" }] }],
+  });
+  vi.mocked(api.file).mockResolvedValue(content("dep"));
+
+  render(<DiffView {...props} file={plain()} headRef="main" />);
+
+  expect(screen.queryByText("generated")).toBeNull();
+  await waitFor(() => expect(screen.getByText("dep")).toBeTruthy());
+});
+
+test("Split lays a change run out side by side, and Full view takes it back to unified", async () => {
+  const file: FileDiff = {
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [
+      {
+        header: "@@ -1,2 +1,3 @@",
+        lines: [
+          { kind: "context", oldLine: 1, newLine: 1, content: "same" },
+          { kind: "del", oldLine: 2, content: "before" },
+          { kind: "add", newLine: 2, content: "after" },
+          { kind: "add", newLine: 3, content: "extra" },
+        ],
+      },
+    ],
+  };
+  vi.mocked(api.file).mockResolvedValue(content("same\nafter\nextra"));
+  const { container } = render(<DiffView {...props} file={file} headRef="main" />);
+  await waitFor(() => expect(api.file).toHaveBeenCalled());
+
+  fireEvent.click(screen.getByRole("button", { name: "Split" }));
+  const cells = (text: string) =>
+    [...screen.getByText(text).closest("tr")!.querySelectorAll("td")].map((td) => td.textContent);
+
+  expect(container.querySelector("table.diff-split")).toBeTruthy();
+  expect(cells("before")).toEqual(["2", "-before", "2", "+after"]);
+  expect(cells("extra")).toEqual(["", "", "3", "+extra"]);
+  expect(screen.getAllByText("same")).toHaveLength(2);
+
+  fireEvent.click(screen.getByRole("button", { name: "Full" }));
+  await waitFor(() => expect(container.querySelector("table.diff-split")).toBeNull());
+  expect((screen.getByRole("button", { name: "Split" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("a one-sided file offers no split", async () => {
+  const file: FileDiff = {
+    oldPath: "",
+    newPath: "a.txt",
+    status: "added",
+    hunks: [{ header: "@@ -0,0 +1 @@", lines: [{ kind: "add", newLine: 1, content: "new" }] }],
+  };
+  vi.mocked(api.file).mockResolvedValue(content("new"));
+  render(<DiffView {...props} file={file} headRef="main" />);
+  await waitFor(() => expect(api.file).toHaveBeenCalled());
+  expect(screen.queryByRole("button", { name: "Split" })).toBeNull();
+});
+
+test("a split card offers each line once to occurrence search", async () => {
+  const file: FileDiff = {
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [
+      {
+        header: "@@ -1,2 +1,2 @@",
+        lines: [
+          { kind: "context", oldLine: 1, newLine: 1, content: "kept" },
+          { kind: "del", oldLine: 2, content: "alpha" },
+          { kind: "add", newLine: 2, content: "omega" },
+          { kind: "add", newLine: 3, content: "extra" },
+        ],
+      },
+    ],
+  };
+  vi.mocked(api.file).mockResolvedValue(content("kept\nomega\nextra"));
+  const { container } = render(<DiffView {...props} file={file} headRef="main" />);
+  fireEvent.click(screen.getByRole("button", { name: "Split" }));
+  const card = container.querySelector<HTMLElement>("[data-file-path]")!;
+  const texts = searchCells(card).map((c) => c.textContent?.trim());
+  expect(texts.filter(Boolean).sort()).toEqual(["+extra", "+omega", "-alpha", "kept"]);
+});
+
+test("a card follows the default layout until its own toggle is used", async () => {
+  const file = (path: string): FileDiff => ({
+    oldPath: path,
+    newPath: path,
+    status: "modified",
+    hunks: [
+      {
+        header: "@@ -1 +1 @@",
+        lines: [
+          { kind: "del", oldLine: 1, content: `old ${path}` },
+          { kind: "add", newLine: 1, content: `new ${path}` },
+        ],
+      },
+    ],
+  });
+  vi.mocked(api.file).mockResolvedValue(content("x"));
+  const { container } = render(
+    <>
+      <DiffView {...props} file={file("a.txt")} headRef="main" />
+      <DiffView {...props} file={file("b.txt")} headRef="main" />
+    </>
+  );
+  const isSplit = (path: string) => !!container.querySelector(`[data-file-path="${path}"] table.diff-split`);
+
+  act(() => setDefaultLayout("split"));
+  expect([isSplit("a.txt"), isSplit("b.txt")]).toEqual([true, true]);
+
+  fireEvent.click(screen.getAllByRole("button", { name: "Unified" })[0]);
+  act(() => setDefaultLayout("unified"));
+  act(() => setDefaultLayout("split"));
+  expect([isSplit("a.txt"), isSplit("b.txt")]).toEqual([false, true]);
+});
+
+test("a selection started in one half of a split row can't take in the other", async () => {
+  const file: FileDiff = {
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    status: "modified",
+    hunks: [
+      {
+        header: "@@ -1 +1 @@",
+        lines: [
+          { kind: "del", oldLine: 1, content: "alpha" },
+          { kind: "add", newLine: 1, content: "omega" },
+        ],
+      },
+    ],
+  };
+  vi.mocked(api.file).mockResolvedValue(content("omega"));
+  act(() => setDefaultLayout("split"));
+  const { container } = render(<DiffView {...props} file={file} headRef="main" />);
+  const table = container.querySelector<HTMLTableElement>("table.diff-split")!;
+
+  fireEvent.mouseDown(screen.getByText("alpha"));
+  expect(table.dataset.selectHalf).toBe("old");
+  fireEvent.mouseDown(screen.getByText("omega"));
+  expect(table.dataset.selectHalf).toBe("new");
+});
+
+test("a collapsed card tokenizes nothing until it is opened, and re-tokenizes a theme it missed", async () => {
+  const file: FileDiff = {
+    oldPath: "a.ts",
+    newPath: "a.ts",
+    status: "modified",
+    hunks: [
+      {
+        header: "@@ -1 +1 @@",
+        lines: [
+          { kind: "del", oldLine: 1, content: "const a = 0;" },
+          { kind: "add", newLine: 1, content: "const a = 1;" },
+        ],
+      },
+    ],
+  };
+  vi.mocked(api.file).mockResolvedValue({ ...content("const a = 1;"), path: "a.ts" });
+  render(<DiffView {...props} headRef="feature" file={file} reviewed />);
+  act(() => setThemePref("github-light"));
+  await new Promise((r) => setTimeout(r, 0));
+  expect(vi.mocked(tokenize)).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Expand file" }));
+  await waitFor(() =>
+    expect(vi.mocked(tokenize)).toHaveBeenCalledWith("const a = 0;", "typescript", "github-light")
+  );
+  await waitFor(() =>
+    expect(vi.mocked(tokenize)).toHaveBeenCalledWith("const a = 1;", "typescript", "github-light")
+  );
+});
+
+test("an untracked file too large to diff says so and never fetches its content", async () => {
+  const file: FileDiff = { oldPath: "", newPath: "dump.md", status: "added", tooLarge: true, hunks: [] };
+  render(<DiffView {...props} headRef="feature" side="worktree" file={file} />);
+  expect(await screen.findByText(/over 1 MiB/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /full/i })).toBeNull();
+  expect(screen.queryByRole("button", { name: /rendered/i })).toBeNull();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(vi.mocked(api.file)).not.toHaveBeenCalled();
+});

@@ -1,0 +1,9 @@
+
+---
+
+## Addressing these comments
+
+Work through every comment above. For each: if you agree, make the change and reply noting what you did; if you disagree or need clarification, reply explaining why or asking a question. Comment types signal intent — bug and suggestion want a fix (or a reason it's declined), question wants an answer, nit is optional. A comment marked (outdated) or (moved from …) means the code shifted since it was written — trust the quoted snippet over the line number.
+
+Each comment is tagged with an id (the `#<id>` in its heading). Reply to one over HTTP — to record what you changed or ask a question — by POSTing to the reviewizard API:
+
