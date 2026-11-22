@@ -44,8 +44,6 @@
 .header-utilities { gap: 12px; }
 .header-local { gap: 6px; padding: 5px 8px; font-size: 11px; border-radius: 8px; }
 .header-local-dot { width: 10px; height: 10px; }
-.header-icon { width: 24px; height: 28px; }
-.header-icon svg { width: 16px; height: 16px; }
 
 .btn { padding: 4px 8px; font-size: var(--text-sm); }
 .btn-icon { padding: 4px; }

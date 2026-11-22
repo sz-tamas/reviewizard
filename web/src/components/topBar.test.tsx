@@ -72,7 +72,7 @@ test("review actions preserve the existing prompts, export, reset and reload", a
     fireEvent.click(await screen.findByRole("menuitem", { name }));
   }
   expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Help" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Help" })).toBeTruthy();
   expect(calls).toEqual(["prompts", "complete", "export", "reset", "reload"]);
   expect(screen.queryByRole("menu")).toBeNull();
 });
