@@ -44,6 +44,8 @@ test("project metadata shows root findings and distinguishes missing files", asy
   for (const label of ["README.md", "No license found", "feature/auth", "Rust 1.94.1", "TypeScript"]) {
     expect(within(row).getByText(label)).toBeTruthy();
   }
+  expect(row.querySelector('[data-language="Rust"] .tabler-icon-brand-rust')).toBeTruthy();
+  expect(row.querySelector('[data-language="TypeScript"] .tabler-icon-brand-typescript')).toBeTruthy();
 });
 
 test("cards show persisted counts and carry the selected project and branch to Reviews", async () => {

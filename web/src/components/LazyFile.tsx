@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { FileTypeIcon } from "./FileTypeIcon";
 
 interface Props {
   anchorId: string;
@@ -38,6 +39,7 @@ export function LazyFile({ anchorId, label, estHeight, rootRef, children }: Prop
       ) : (
         <div className="file file-placeholder" style={{ height: estHeight }}>
           <div className="file-header">
+            <FileTypeIcon path={label} />
             <span className="file-path" title={label}>
               {label}
             </span>

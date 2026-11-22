@@ -6,6 +6,7 @@ import { CommentCount } from "./CommentCount";
 import { CopyButton } from "./CopyButton";
 import { DiffStatBadge } from "./DiffStatBadge";
 import { ViewToggle } from "./ViewToggle";
+import { FileTypeIcon } from "./FileTypeIcon";
 
 interface Props {
   status: FileStatus;
@@ -67,6 +68,7 @@ export function FileHeader({
         <Chevron open={!collapsed} />
       </button>
       <span className={`status status-${status}`}>{status}</span>
+      <FileTypeIcon path={path} />
       <span className="file-path" title={path}>
         {path}
       </span>

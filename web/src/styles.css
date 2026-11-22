@@ -1694,6 +1694,12 @@ textarea:focus-visible {
   cursor: pointer;
   font-size: var(--text-sm);
 }
+.file-type-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--language-color, var(--muted));
+}
 .file-path {
   font-size: var(--text-md);
   min-width: 0;
@@ -3631,16 +3637,17 @@ kbd {
 .project-metadata svg { width: 15px; height: 15px; flex-shrink: 0; }
 .project-metadata .project-metadata-branch { color: light-dark(var(--accent), #c5a3ff); }
 .project-metadata [data-language] { color: var(--language-color, var(--text)); }
-.project-metadata [data-language="Rust"] { --language-color: light-dark(#a44820, #f1a475); }
-.project-metadata [data-language="JavaScript"] { --language-color: light-dark(#795b00, #f2d66e); }
-.project-metadata [data-language="TypeScript"] { --language-color: light-dark(#155ba5, #86b9ff); }
-.project-metadata [data-language="Node.js"] { --language-color: light-dark(#3c6825, #a7d787); }
-.project-metadata [data-language="Python"] { --language-color: light-dark(#855600, #f3c67d); }
-.project-metadata [data-language="Go"] { --language-color: light-dark(#006879, #78d4e9); }
-.project-metadata [data-language="Ruby"] { --language-color: light-dark(#a3293b, #ff939c); }
-.project-metadata [data-language="Java"] { --language-color: light-dark(#9b4b11, #e9a365); }
-.project-metadata [data-language="C#"] { --language-color: light-dark(#23683b, #88dba3); }
-.project-metadata [data-language="C++"] { --language-color: light-dark(#9b356a, #efa1c4); }
+[data-language="Rust"] { --language-color: light-dark(#a44820, #f1a475); }
+[data-language="JavaScript"] { --language-color: light-dark(#795b00, #f2d66e); }
+[data-language="TypeScript"] { --language-color: light-dark(#155ba5, #86b9ff); }
+[data-language="Node.js"] { --language-color: light-dark(#3c6825, #a7d787); }
+[data-language="Python"] { --language-color: light-dark(#855600, #f3c67d); }
+[data-language="Go"] { --language-color: light-dark(#006879, #78d4e9); }
+[data-language="Ruby"] { --language-color: light-dark(#a3293b, #ff939c); }
+[data-language="Java"] { --language-color: light-dark(#9b4b11, #e9a365); }
+[data-language="C#"] { --language-color: light-dark(#23683b, #88dba3); }
+[data-language="C"] { --language-color: light-dark(#155ba5, #86b9ff); }
+[data-language="C++"] { --language-color: light-dark(#9b356a, #efa1c4); }
 .project-saved-reviews { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .project-saved-reviews > p { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
 @container (min-width: 620px) {

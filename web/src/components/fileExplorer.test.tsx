@@ -11,10 +11,16 @@ function mount() {
   render(<FileExplorer files={files} comments={[{ id: 1, filePath: "b.ts", resolved: false } as Comment]} reviewed={new Set(["a.ts"])} selected={null} onSelect={() => {}} onToggleReviewed={() => {}} onToggleFolder={() => {}} onAddFile={() => {}} onCollapse={() => {}} scopeSummary="feature → main, Staged, from All" />);
 }
 
+test("file icons sit beside filenames without changing their accessible names", () => {
+  mount();
+  const file = screen.getByRole("button", { name: /^M\s*a\.ts$/ });
+  expect(file.querySelector('svg.file-type-icon[data-language="TypeScript"][aria-hidden="true"]')).toBeTruthy();
+});
+
 test("changed-file filters combine actual reviewed marks and open findings", () => {
   mount();
   fireEvent.click(screen.getByRole("button", { name: /Unreviewed 1/ }));
-  expect(screen.queryByRole("button", { name: /M a.ts/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^M\s*a\.ts$/ })).toBeNull();
   expect(screen.getByTitle("b.ts")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /Flagged 1/ }));
   expect(screen.getByTitle("b.ts")).toBeTruthy();

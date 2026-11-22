@@ -3,6 +3,7 @@ import { api } from "../api/api";
 import { useListNavigation } from "../hooks/useListNavigation";
 import { Modal } from "./Modal";
 import { SearchInput } from "./SearchInput";
+import { FileTypeIcon } from "./FileTypeIcon";
 
 interface Props {
   repo: string;
@@ -81,6 +82,7 @@ export function AddFileModal({ repo, headRef, present, onSelect, onClose }: Prop
                 onClick={() => onSelect(path)}
                 title={path}
               >
+                <FileTypeIcon path={path} />
                 <span className="fname">{path}</span>
                 {present.has(path) && <span className="muted addfile-present">in review</span>}
               </button>

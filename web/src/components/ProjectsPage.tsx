@@ -6,6 +6,7 @@ import type { Project, Review } from "../api/types";
 import { repositoriesQueryOptions } from "../api/queries";
 import { absoluteTime, relativeTime } from "../utils/time";
 import { ReviewSetupModal } from "./ReviewSetupModal";
+import { LanguageIcon } from "./FileTypeIcon";
 import { AppHeader } from "./AppHeader";
 import { ReviewIdentity, reviewSourceLabel } from "./ReviewIdentity";
 import { ReviewStats } from "./ReviewStats";
@@ -136,7 +137,7 @@ function ProjectMetadata({ metadata }: { metadata: Project["metadata"] }) {
       <li><BookOpen aria-hidden="true" /><span>{metadata.readme ?? "No README found"}</span></li>
       <li className="project-metadata-branch"><GitBranch aria-hidden="true" /><span>{metadata.branch ?? "Detached HEAD"}</span></li>
       {metadata.languages.length ? metadata.languages.map(({ name, version }) => (
-        <li key={name} data-language={name}><Code2 aria-hidden="true" /><span>{name}{version && ` ${version}`}</span></li>
+        <li key={name} data-language={name}><LanguageIcon name={name} /><span>{name}{version && ` ${version}`}</span></li>
       )) : <li><Code2 aria-hidden="true" /><span>No languages detected in root</span></li>}
     </ul>
   );

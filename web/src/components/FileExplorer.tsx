@@ -6,6 +6,7 @@ import { DiffStatBadge } from "./DiffStatBadge";
 import { HighlightMatch } from "./HighlightMatch";
 import { IconChevronLeft, IconPlus } from "./icons";
 import { SearchInput } from "./SearchInput";
+import { FileTypeIcon } from "./FileTypeIcon";
 
 interface Props {
   files: FileDiff[];
@@ -252,6 +253,7 @@ export function FileExplorer({
               <span className={`fstat fstat-${n.file.status}`}>
                 {STATUS_MARK[n.file.status] ?? "M"}
               </span>
+              <FileTypeIcon path={n.path} />
               <span className="fname">
                 <HighlightMatch text={n.name} needle={q} />
               </span>
