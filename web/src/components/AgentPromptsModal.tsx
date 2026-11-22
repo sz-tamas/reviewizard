@@ -36,6 +36,7 @@ export function AgentPromptsModal({ repo, repoPath = repo, vars, onClose }: {
 
   return <Modal title="AI Review Handoff" onClose={onClose} className="handoff-generator-modal">
     <div className="handoff-generator-body">
+      <p className="handoff-hint">Select one or more lenses to combine in a single review.</p>
       <fieldset className="handoff-fieldset">
         <legend>Review lenses</legend>
         <div className="handoff-lenses">
@@ -67,7 +68,7 @@ export function AgentPromptsModal({ repo, repoPath = repo, vars, onClose }: {
           {canCopy ? <CopyButton text={prompt} idleLabel="Copy" /> : <button className="btn" disabled>Copy</button>}
         </div>
         <textarea id={`${severityId}-output`} aria-label="Generated handoff prompt" className="prompt-editor handoff-output-text" spellCheck={false} value={prompt} readOnly={!generatedSignature} onChange={(e) => setPrompt(e.target.value)} placeholder="Choose your review options, then generate a handoff prompt." />
-        <p className="handoff-hint" role="status">{outdated ? "Options changed. Generate again to update the prompt." : generatedSignature ? "Edit the generated prompt if needed, then copy it to your agent." : "Select one or more lenses to combine in a single review."}</p>
+        {generatedSignature && <p className="handoff-hint" role="status">{outdated ? "Options changed. Generate again to update the prompt." : "Edit the generated prompt if needed, then copy it to your agent."}</p>}
       </div>
       {error && <p className="project-error" role="alert">{error}</p>}
     </div>

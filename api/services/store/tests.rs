@@ -457,3 +457,37 @@ async fn review_http_reads_report_database_fault_as_500() {
         );
     }
 }
+
+#[test]
+fn deleting_review_cascades_and_preserves_other_reviews() {
+    let s = Store::in_memory().unwrap();
+    let r = review(&s);
+    let c = comment(&s, r.id, Side::Head);
+    let (reply, _) = s.add_reply(c.id, "reply", "human").unwrap();
+    s.set_files_reviewed(r.id, &[mark("a.rs", "hash")], true, Side::Head)
+        .unwrap();
+    let other = s
+        .create_or_get_review("/other", "main", "feature", "sha")
+        .unwrap();
+    s.delete_review(r.id).unwrap();
+    assert!(matches!(
+        s.get_review(r.id).unwrap_err().kind,
+        ErrorKind::NotFound
+    ));
+    assert!(s.get_comment(c.id).is_err());
+    assert_eq!(
+        s.with(|c| c.query_row(
+            "SELECT COUNT(*) FROM replies WHERE id=?",
+            [reply.id],
+            |row| row.get::<_, i64>(0)
+        ))
+        .unwrap(),
+        0
+    );
+    assert!(s.list_reviewed_files_full(r.id).unwrap().is_empty());
+    assert_eq!(s.get_review(other.id).unwrap().id, other.id);
+    assert!(matches!(
+        s.delete_review(r.id).unwrap_err().kind,
+        ErrorKind::NotFound
+    ));
+}

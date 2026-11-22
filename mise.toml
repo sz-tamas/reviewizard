@@ -38,11 +38,11 @@ depends = ["build:rust", "build:web"]
 dir = "{{config_root}}"
 
 [tasks.start]
-description = "Run backend and frontend with process-compose"
+description = "Run the app quietly, open the browser, and stop with Ctrl+C"
 depends = ["deps"]
 dir = "{{config_root}}"
 raw = true
-run = "process-compose up"
+run = "node scripts/start.mjs"
 
 [tasks."dev:backend"]
 hide = true
@@ -51,7 +51,7 @@ dir = "{{config_root}}"
 run = 'cargo run --locked -- --root "${REVIEWIZARD_ROOT:-.}" --port "${REVIEWIZARD_BACKEND_PORT:-7777}"'
 
 [tasks.dev]
-description = "Watch backend with bacon and frontend with Vite"
+description = "Start with live reload and open the app in the default browser"
 depends = ["deps"]
 dir = "{{config_root}}"
 raw = true
@@ -65,9 +65,9 @@ run = 'bacon --headless run -- --root "${REVIEWIZARD_ROOT:-.}" --port "${REVIEWI
 
 [tasks."dev:frontend"]
 hide = true
-description = "Run Vite frontend for local development"
+description = "Run Vite frontend and open it in the default browser"
 dir = "{{config_root}}/web"
-run = 'pnpm run dev --host 127.0.0.1 --port "${REVIEWIZARD_FRONTEND_PORT:-5173}" --strictPort'
+run = 'pnpm run dev --host 127.0.0.1 --port "${REVIEWIZARD_FRONTEND_PORT:-5173}" --strictPort --open'
 
 [tasks.serve]
 hide = true

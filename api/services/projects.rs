@@ -10,18 +10,31 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+mod metadata;
+
 #[derive(Deserialize)]
 pub struct AddProject {
     pub path: String,
 }
 
-pub async fn list(store: &Store) -> Result<Vec<Project>, ServiceError> {
-    Ok(store
-        .run(|s| s.projects())
-        .await?
-        .into_iter()
-        .filter(|p| !p.archived)
-        .collect())
+#[derive(Serialize)]
+pub struct ListedProject {
+    #[serde(flatten)]
+    project: Project,
+    metadata: Option<metadata::ProjectMetadata>,
+}
+
+pub async fn list(store: &Store) -> Result<Vec<ListedProject>, ServiceError> {
+    use futures_util::{StreamExt, stream};
+    let projects = store.run(|s| s.projects()).await?;
+    Ok(stream::iter(projects.into_iter().filter(|p| !p.archived))
+        .map(|project| async move {
+            let metadata = metadata::collect(&project).await;
+            ListedProject { project, metadata }
+        })
+        .buffered(4)
+        .collect()
+        .await)
 }
 
 pub async fn add(

@@ -79,7 +79,9 @@ pub async fn annotate(
     {
         let mut kept = Vec::new();
         for mark in marks {
-            if reviewed::holds(&mut cache, mark).await {
+            if (!review.scope_configured || mark.side == review.scope_side)
+                && reviewed::holds(&mut cache, mark).await
+            {
                 kept.push(mark.path.clone());
             }
         }

@@ -79,6 +79,14 @@ impl Store {
     pub fn count_reviews(&self) -> Result<i64> {
         self.with(|c| c.query_row("SELECT COUNT(*) FROM reviews", [], |r| r.get(0)))
     }
+    pub fn delete_review(&self, id: i64) -> Result<()> {
+        self.with(|c| {
+            if c.execute("DELETE FROM reviews WHERE id=?", [id])? == 0 {
+                return Err(rusqlite::Error::QueryReturnedNoRows);
+            }
+            Ok(())
+        })
+    }
     pub fn reset_review(&self, id: i64) -> Result<()> {
         self.with(|c| {
             let tx = c.transaction()?;

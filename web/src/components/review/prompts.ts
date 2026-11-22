@@ -15,13 +15,19 @@ export interface PromptVars extends ReviewVars {
   repoPath: string;
 }
 
+const CONNECTION_GUIDANCE = "Run the HTTP commands from a local terminal tool on the same machine as reviewizard. A sandbox connection failure (including curl exit 7) does not prove the server is down. If local network access is restricted, use your agent tool’s approval/escalation mechanism to request access to this exact origin and retry the failed read before stopping. In Codex, retry the terminal command with sandbox_permissions=require_escalated and a scoped justification when supported; follow the session’s approval policy. Do not bypass a denial or disable sandboxing globally. If access is denied or the retry still fails, report the URL, error and access limitation; do not assume the user needs to start the server. A remote/cloud agent’s localhost refers to its own machine and cannot reach the user’s local service. Never change the saved review scope or silently switch to another endpoint.";
+
 export const AGENT_PROMPTS = [{
   kind: "reply" as const,
   label: "Address the review",
   author: "agent",
   template: `This is a code review produced with reviewizard. Fetch it and follow the "Addressing these comments" section it ends with.
 
-curl -s -X POST '{{origin}}/api/reviews/{{reviewId}}/export.md?instructions=true'
+curl --fail-with-body -sS -X POST '{{origin}}/api/reviews/{{reviewId}}/export.md?instructions=true'
+
+Work only in the target repository: {{repoPath}}. Fix and verify findings, reply with evidence, then resolve verified fixed or already-fixed findings through the API described in the export. Leave disputed findings, clarification questions and unverified fixes open. Do not complete the overall review.
+
+${CONNECTION_GUIDANCE}
 
 Use each finding's author and any severity/lens labels to interpret it. Older findings may identify their lens through the author alone.
 `,
@@ -44,7 +50,7 @@ export interface HandoffOptions {
   format: HandoffFormat;
 }
 export const HANDOFF_FORMATS: { value: HandoffFormat; label: string; instruction: string; author: string }[] = [
-  { value: "codex-cli", label: "Codex CLI", instruction: "Use this assignment in your Codex CLI session. Work in the repository below and use your terminal tools to inspect the saved comparison and report findings.", author: "codex-review-agent" },
+  { value: "codex-cli", label: "Codex (desktop / CLI)", instruction: "Use this assignment in your local Codex desktop app or Codex CLI session. Work in the repository below and use your terminal tools to inspect the saved comparison and report findings.", author: "codex-review-agent" },
   { value: "claude-code", label: "Claude Code", instruction: "Use this assignment in your Claude Code session. Inspect the repository with your available tools and report findings against the saved comparison below.", author: "claude-review-agent" },
   { value: "markdown", label: "Markdown", instruction: "Review the repository using this Markdown assignment and report findings against the saved comparison below.", author: "review-agent" },
   { value: "json", label: "JSON handoff", instruction: "Use this structured assignment to inspect the saved comparison and report findings.", author: "review-agent" },
@@ -97,6 +103,7 @@ export function generateHandoffPrompt(vars: ReviewVars, repoPath: string, option
       lenses: lenses.map(({ id, label, brief }) => ({ id, label, instructions: lensBrief(brief) })),
       minimumSeverity: options.minimumSeverity, acceptedSeverities: accepted,
       rules: reportingRules,
+      connectionInstructions: CONNECTION_GUIDANCE,
       onScopeError: "Stop and report the error. Never substitute another repository, starting commit or source side.",
       reporting: { method: "POST", url: `${reviewURL}/comments`, existingFindingsURL: `${reviewURL}/comments`, contentType: "application/json", example: commentExample },
     }, null, 2);
@@ -114,12 +121,15 @@ ${lenses.map((lens) => `- ${lens.label}: ${lensBrief(lens.brief)}`).join("\n")}
 ## Minimum severity: ${severityLabel}
 ${reportingRules.map((rule) => `- ${rule}`).join("\n")}
 
+## Local API access
+${CONNECTION_GUIDANCE}
+
 ## ${codebase ? "Read the entire saved codebase" : "Read the exact saved diff"}
 \`\`\`sh
 curl --fail-with-body -sS ${shellQuote(`${reviewURL}/diff`)}
 curl --fail-with-body -sS ${shellQuote(`${reviewURL}/comments`)}
 \`\`\`
-If this fails, stop and report the error. Never substitute another repository, starting commit or source side. ${codebase ? "The endpoint represents every file in the selected source as added against an empty tree. Inspect the entire inventory, including unchanged files. Binary and oversized files may require separate inspection using the same saved source; report coverage limits." : "Read surrounding code as needed to verify each issue."}
+For connection failures, follow the local API access instructions above before stopping. For HTTP or saved-scope errors, stop and report the error. Never substitute another repository, starting commit or source side. ${codebase ? "The endpoint represents every file in the selected source as added against an empty tree. Inspect the entire inventory, including unchanged files. Binary and oversized files may require separate inspection using the same saved source; report coverage limits." : "Read surrounding code as needed to verify each issue."}
 
 ## File a finding
 Use this API shape; replace the example path, line range, type and body with your finding. Type is general | bug | suggestion | question | nit. Severity/lenses belong in the body prefix, not unsupported API fields.

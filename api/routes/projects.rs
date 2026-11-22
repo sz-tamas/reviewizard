@@ -1,7 +1,7 @@
 use crate::{
     services::{
         http::{AppState, body::CompatJson},
-        projects::{self, AddProject, FolderQuery, Folders},
+        projects::{self, AddProject, FolderQuery, Folders, ListedProject},
         store::Project,
     },
     utils::errors::ServiceError,
@@ -16,7 +16,9 @@ use axum::{
 };
 use std::sync::Arc;
 
-pub async fn list(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Project>>, ServiceError> {
+pub async fn list(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<ListedProject>>, ServiceError> {
     Ok(Json(projects::list(&state.store).await?))
 }
 pub async fn add(

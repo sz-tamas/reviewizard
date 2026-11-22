@@ -100,3 +100,22 @@ test("every codebase handoff covers unchanged files with the saved source and re
     }
   }
 });
+
+test("handoffs diagnose sandbox access before declaring the local server unavailable", () => {
+  for (const format of HANDOFF_FORMATS) {
+    const output = generateHandoffPrompt(vars, vars.repoPath, { ...DEFAULT_HANDOFF_OPTIONS, format: format.value });
+    const guidance = format.value === "json" ? JSON.parse(output).connectionInstructions : output;
+    expect(guidance).toContain("curl exit 7");
+    expect(guidance).toContain("sandbox_permissions=require_escalated");
+    expect(guidance).toContain("Do not bypass a denial");
+    expect(guidance).toContain("remote/cloud");
+    expect(output).not.toContain("If this fails, stop");
+  }
+});
+
+test("the persisted Codex format explicitly supports desktop and CLI", () => {
+  const output = generateHandoffPrompt(vars, vars.repoPath, DEFAULT_HANDOFF_OPTIONS);
+  expect(DEFAULT_HANDOFF_OPTIONS.format).toBe("codex-cli");
+  expect(output).toContain("Codex (desktop / CLI)");
+  expect(output).toContain("local Codex desktop app or Codex CLI session");
+});

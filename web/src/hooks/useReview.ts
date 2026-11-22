@@ -85,9 +85,10 @@ export function useReview(initial?: InitialReviewSelection) {
   // A base resolving to head empties only the committed side (merge-base(head, head) is head); the uncommitted
   // sides still mean "just my uncommitted work", so force that axis on rather than refuse the base.
   const baseIsHead = from === "all" && !!head && (base || mainBranch || "") === head;
-  const effectiveUncommitted = initial?.reviewId ? (initial.side ?? "head") !== "head" : (uncommitted || baseIsHead) && headIsCurrent;
+  const savedSide = review?.scopeSide ?? initial?.side ?? "head";
+  const effectiveUncommitted = initial?.reviewId ? savedSide !== "head" : (uncommitted || baseIsHead) && headIsCurrent;
   // The side new comments and reviewed marks anchor to.
-  const side: Side = initial?.reviewId ? initial.side ?? "head" : !effectiveUncommitted ? "head" : unstaged ? "worktree" : "index";
+  const side: Side = initial?.reviewId ? savedSide : !effectiveUncommitted ? "head" : unstaged ? "worktree" : "index";
 
   function diffOpts(baseRef: string): DiffOpts {
     return {
@@ -189,7 +190,28 @@ export function useReview(initial?: InitialReviewSelection) {
 
   // The one place a Side becomes the two API axes: both move in one update and one pref write. Only the reviewer's
   // own pick persists — writing from an effect would let the guard above overwrite the stored choice.
+  async function changeSavedSide(next: Side) {
+    if (!review || loading || next === side) return;
+    const seq = ++reqSeq.current;
+    setLoading(true);
+    setError(null);
+    try {
+      await api.setReviewSide(review.id, next);
+    } catch (e) {
+      if (reqSeq.current === seq) {
+        setError((e as Error).message);
+        setLoading(false);
+      }
+      return;
+    }
+    if (reqSeq.current !== seq) return;
+    setFiles([]);
+    setReviewedFiles(new Set());
+    await startReview();
+  }
+
   function changeSide(next: Side) {
+    if (initial?.reviewId) return changeSavedSide(next);
     const nextUncommitted = next !== "head";
     const nextUnstaged = next !== "index";
     setUncommitted(nextUncommitted);
@@ -300,7 +322,7 @@ export function useReview(initial?: InitialReviewSelection) {
       } catch {
         // Transient refresh failure — keep the current state.
       }
-      if (rev && !cancelled) {
+      if (rev && !cancelled && (!initial?.reviewId || reqSeq.current === seq)) {
         const landed = rev;
         // Fetched by id, so not gated on seq — that would drop the comment/reviewed updates the ping came for.
         setReview((prev) => keepIfSame(prev, landed));

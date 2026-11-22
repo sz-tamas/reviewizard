@@ -20,6 +20,12 @@ project from the list without deleting its folder or review history. POST accept
 `{"path":"/absolute/local/git/root"}`. Folders must contain `.git` and validate as
 Git worktree roots; linked worktrees are supported. Re-adding a path restores its
 stable ID. A path that resolves to a different canonical folder is rejected.
+GET includes a `metadata` summary for each project. It checks root-level README
+and license files, reads the current Git branch, and infers languages and declared
+toolchain versions from root filenames and common manifests. The scan does not
+recurse, run project tools, or write to the repository. File reads are bounded
+and skip symlinks. A missing version is returned as null, and files with an
+unrecognized license are reported by filename.
 GET `/api/project-folders?path=...` lists directories only, confined to the home
 and startup folders; hidden folders and symlinks are excluded. An absolute path
 outside those browse roots can be registered explicitly.
@@ -54,6 +60,10 @@ without scope fallback. Comments and reviewed-file writes for configured reviews
 must use the recorded source side. Legacy APIs keep their existing resume behavior
 and never reuse a configured review's ID.
 
+POST `/api/reviews/{id}/source` accepts `{"side":"head"}`, `index`, or `worktree`.
+It validates and saves the chosen source before notifying viewers. Existing finding
+anchors retain their source; reviewed-file progress uses marks for the selected source.
+
 POST `/api/reviews/{id}/status` accepts `{"status":"completed"}` or `draft`.
 Completion is independent of reviewed-file freshness; exporting does not reopen it.
 Additive migrations retain existing IDs/paths/anchors and label legacy scope defaults.
@@ -63,12 +73,22 @@ Repository/Git reads: `/api/repos`, `/api/branches`, `/api/commits`, `/api/diff`
 `/api/files`, `/api/file`, `/api/blob`. Select committed, index or working-tree
 content explicitly. `/healthz` identifies the backend; UI paths such as `/` return JSON 404 responses.
 
+DELETE `/api/reviews/{id}` permanently removes a review and its findings, replies
+and reviewed-file marks; missing reviews return 404. The Projects page keeps completed
+reviews selectable with a completed status, and shows review progress.
+
 Review lifecycle: POST `/api/reviews`; GET `/api/reviews/{id}`; POST its `/reset`,
 `/summary`, `/reviewed`, `/export` and `/export.md` operations. GET `/events` streams
 coalesced metadata, diff and ref notifications.
 
 Comments: GET/POST `/api/reviews/{id}/comments`; PATCH/DELETE `/api/comments/{id}`;
 POST its `/resolved` and `/replies` operations; PATCH/DELETE `/api/replies/{id}`.
+POST `/api/comments/{id}/resolved` with `{"resolved":true}` resolves a finding;
+`{"resolved":false}` reopens it. Success returns 204; a missing comment returns 404.
+Replies and findings are retained, and resolving findings does not complete the review.
+Exports with `instructions=true` ask agents to fix and verify findings, post an
+explanatory reply, then resolve verified fixes (including already-fixed issues).
+Disputed findings, clarification questions and unverified fixes stay open.
 
 Mutations validate input before writing and notify after success. JSON bodies are
 bounded to 8 MiB and must contain one document. Query keys use their first value.

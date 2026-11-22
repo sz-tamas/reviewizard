@@ -23,6 +23,10 @@ test("the address prompt is copyable without completing the review", async () =>
   fireEvent.click(screen.getByRole("button", { name: "Copy" }));
   await screen.findByRole("button", { name: "Copied ✓" });
   expect(copied).toContain("http://localhost/api/reviews/7/export.md?instructions=true");
+  expect(copied).toContain("Fix and verify findings");
+  expect(copied).toContain("Leave disputed findings, clarification questions and unverified fixes open");
+  expect(copied).toContain("sandbox_permissions=require_escalated");
+  expect(copied).toContain("target repository: /repo-a");
   expect(onComplete).not.toHaveBeenCalled();
 });
 

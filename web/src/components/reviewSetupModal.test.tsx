@@ -14,6 +14,7 @@ const project: Project = { id: 7, name: "app", path: "/work/app", reviewCount: 0
 const other = { ...project, id: 8, name: "service", path: "/work/service" };
 const saved = { id: 70, repoPath: project.path, headRef: "feature", baseRef: "main", scopeSide: "index", scopeFrom: "abc123", scopeConfigured: true } as Review;
 const onSaved = vi.fn();
+const onClose = vi.fn();
 const branch = (name: string, current = false, main = false, remote = false) => ({ name, isCurrent: current, isMain: main, isRemote: remote, lastCommit: "" });
 beforeEach(() => {
   vi.clearAllMocks();
@@ -22,15 +23,37 @@ beforeEach(() => {
   vi.mocked(api.saveProjectReview).mockResolvedValue(saved);
 });
 function mount() {
-  render(<QueryClientProvider client={createQueryClient()}><ReviewSetupModal projects={[project, other]} initialProject={project} onClose={() => {}} onSaved={onSaved} /></QueryClientProvider>);
+  render(<QueryClientProvider client={createQueryClient()}><ReviewSetupModal projects={[project, other]} initialProject={project} onClose={onClose} onSaved={onSaved} /></QueryClientProvider>);
 }
+
+async function openDropdown(label: string) {
+  const trigger = screen.getByRole("button", { name: label });
+  await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  return screen.findByRole("menu");
+}
+
+async function choose(label: string, option: string) {
+  await openDropdown(label);
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: option }));
+}
+
+test("Escape closes an open picker before closing review setup", async () => {
+  mount();
+  const menu = await openDropdown("Review repository");
+  expect(screen.getByRole("menuitemradio", { name: "app — /work/app", checked: true })).toBeTruthy();
+  fireEvent.keyDown(menu, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Review repository" }), { key: "Escape" });
+  expect(onClose).toHaveBeenCalledOnce();
+});
 
 test("saving carries repository, head, explicit base, inclusive commit and source side", async () => {
   mount();
-  await waitFor(() => expect((screen.getByLabelText("Review head branch") as HTMLSelectElement).value).toBe("feature"));
-  fireEvent.change(screen.getByLabelText("Review base branch"), { target: { value: "origin/main" } });
-  await screen.findByRole("option", { name: "abc123 — Selected change" });
-  fireEvent.change(screen.getByLabelText("Review starting commit"), { target: { value: "abc123" } });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Review head branch" }).textContent).toBe("feature"));
+  await choose("Review base branch", "origin/main (remote, last fetched)");
+  await choose("Review starting commit", "abc123 — Selected change");
   fireEvent.click(screen.getByRole("button", { name: "Staged" }));
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveProjectReview).toHaveBeenCalledWith(7, { mode: "changes", head: "feature", base: "origin/main", from: "abc123", side: "index" }));
@@ -39,8 +62,8 @@ test("saving carries repository, head, explicit base, inclusive commit and sourc
 
 test("uncommitted sources are unavailable off the checked-out branch", async () => {
   mount();
-  await waitFor(() => expect((screen.getByLabelText("Review head branch") as HTMLSelectElement).value).toBe("feature"));
-  fireEvent.change(screen.getByLabelText("Review head branch"), { target: { value: "main" } });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Review head branch" }).textContent).toBe("feature"));
+  await choose("Review head branch", "main");
   expect((screen.getByRole("button", { name: "Staged" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Working tree" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole("button", { name: "Committed" }).getAttribute("aria-pressed")).toBe("true");
@@ -49,11 +72,10 @@ test("uncommitted sources are unavailable off the checked-out branch", async () 
 test("changing repositories drops the other repository's branch and starting commit", async () => {
   vi.mocked(api.branches).mockImplementation(async (repo) => ({ branches: repo === "@project/7" ? [branch("feature", true), branch("main", false, true)] : [branch("develop", true), branch("main", false, true)] }));
   mount();
-  await screen.findByRole("option", { name: "abc123 — Selected change" });
-  fireEvent.change(screen.getByLabelText("Review starting commit"), { target: { value: "abc123" } });
+  await choose("Review starting commit", "abc123 — Selected change");
   fireEvent.click(screen.getByRole("button", { name: "Staged" }));
-  fireEvent.change(screen.getByLabelText("Review repository"), { target: { value: "8" } });
-  await waitFor(() => expect((screen.getByLabelText("Review head branch") as HTMLSelectElement).value).toBe("develop"));
+  await choose("Review repository", "service — /work/service");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Review head branch" }).textContent).toBe("develop"));
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveProjectReview).toHaveBeenCalledWith(8, { mode: "changes", head: "develop", base: "", from: "all", side: "head" }));
 });
@@ -61,7 +83,7 @@ test("changing repositories drops the other repository's branch and starting com
 test("failed scope validation keeps the setup open without reporting a saved review", async () => {
   vi.mocked(api.saveProjectReview).mockRejectedValue(new Error("Unknown ref: deleted-base"));
   mount();
-  await waitFor(() => expect((screen.getByLabelText("Review head branch") as HTMLSelectElement).value).toBe("feature"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Review head branch" }).textContent).toBe("feature"));
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   expect((await screen.findByRole("alert")).textContent).toBe("Unknown ref: deleted-base");
   expect(onSaved).not.toHaveBeenCalled();
@@ -69,9 +91,8 @@ test("failed scope validation keeps the setup open without reporting a saved rev
 
 test("codebase scope hides branch and source controls and saves the current codebase", async () => {
   mount();
-  await screen.findByRole("option", { name: "abc123 — Selected change" });
-  fireEvent.change(screen.getByLabelText("Review base branch"), { target: { value: "origin/main" } });
-  fireEvent.change(screen.getByLabelText("Review starting commit"), { target: { value: "abc123" } });
+  await choose("Review base branch", "origin/main (remote, last fetched)");
+  await choose("Review starting commit", "abc123 — Selected change");
   fireEvent.click(screen.getByRole("button", { name: "Codebase" }));
   expect(screen.queryByLabelText("Review base branch")).toBeNull();
   expect(screen.queryByLabelText("Review starting commit")).toBeNull();
@@ -83,8 +104,8 @@ test("codebase scope hides branch and source controls and saves the current code
 
 test("codebase uses the checked-out branch even after choosing a different changes branch", async () => {
   mount();
-  await waitFor(() => expect((screen.getByLabelText("Review head branch") as HTMLSelectElement).value).toBe("feature"));
-  fireEvent.change(screen.getByLabelText("Review head branch"), { target: { value: "main" } });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Review head branch" }).textContent).toBe("feature"));
+  await choose("Review head branch", "main");
   fireEvent.click(screen.getByRole("button", { name: "Codebase" }));
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveProjectReview).toHaveBeenCalledWith(7, { mode: "codebase", head: "HEAD", base: "", from: "all", side: "worktree" }));

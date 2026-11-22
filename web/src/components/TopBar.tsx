@@ -1,8 +1,10 @@
 import type { ComboOption } from "./Combobox";
 import { AppHeader } from "./AppHeader";
+import { ReviewIdentity, reviewSourceLabel } from "./ReviewIdentity";
+import { ReviewDropdown } from "./ReviewDropdown";
 import { ReviewStats } from "./ReviewStats";
 import { IconTrash } from "./icons";
-import { Check, ChevronDown, Code2, Download, RefreshCw, Sparkles } from "lucide-react";
+import { Check, ChevronDown, Download, RefreshCw, Sparkles } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import type { DiffStat } from "../components/diff/diffStats";
 import type { Review, Side } from "../api/types";
@@ -61,7 +63,7 @@ interface Props {
 
 export function TopBar({ selection: s, actions, status }: Props) {
   const repoName = s.repoOptions.find((r) => r.value === s.repo)?.label ?? s.repo;
-  const source = s.side === "head" ? "Committed" : s.side === "index" ? "Staged" : "Working tree";
+  const source = reviewSourceLabel(s.side);
   const completed = status.review?.status === "completed";
   const codebase = status.review?.scopeMode === "codebase";
   const scopeTitle = codebase ? `Entire codebase: ${source} on ${s.head}` : `Before: ${status.baseSha || status.review?.baseRef || s.base || "auto"} — ${s.from === "all" ? "merge-base with the selected base" : `parent of ${s.from}, so that commit is included`}\nAfter: ${source}${s.side === "worktree" ? " (committed, staged, unstaged and untracked)" : s.side === "index" ? " (committed plus the Git index)" : ` on ${s.head}`}`;
@@ -69,16 +71,13 @@ export function TopBar({ selection: s, actions, status }: Props) {
     <>
       <AppHeader />
       <section className="review-overview" aria-label="Review overview">
-        <div className="review-identity">
-          <div className="review-emblem"><Code2 size={27} /></div>
-          <div>
-            <h1>{repoName || "Review"}<span> / </span>{s.head || "Select a saved review"}</h1>
-            <p title={scopeTitle}>Review: {source}{status.review?.scopeConfigured === false ? " (legacy default)" : ""}{!codebase && <><span> • </span>Base: {status.review?.baseRef || s.base || "auto"}</>}<span> • </span>Scope: {codebase ? "Entire codebase" : "Changed files"} ({status.fileCount})</p>
-            {!codebase && s.from !== "all" && <p className="review-from">From {s.from.slice(0, 7)} (inclusive)</p>}
-          </div>
-        </div>
+        <ReviewIdentity repoName={repoName} head={s.head} base={s.base} from={s.from} source={source}
+          review={status.review} fileCount={status.fileCount} scopeTitle={scopeTitle} />
         <ReviewStats {...status} completed={completed} />
         <div className="review-header-actions">
+          <ReviewDropdown label={`Review source: ${source}`} value={s.side}
+            disabled={s.loading || !status.review} onChange={(value) => s.onSideChange(value as Side)}
+            options={[{ value: "head", label: "Committed" }, { value: "index", label: "Staged" }, { value: "worktree", label: "Working tree" }]} />
           <button className="review-action-primary" onClick={actions.onShowPrompts} disabled={!status.review}><Sparkles size={17} />AI Review Handoff</button>
           <div className="review-complete-group">
             <button className="review-action" onClick={actions.onComplete} disabled={!status.review || !actions.onComplete}><Check size={17} />{completed ? "Reopen Review" : "Complete Review"}</button>

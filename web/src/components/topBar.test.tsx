@@ -90,3 +90,24 @@ test("codebase overview identifies the entire codebase without a comparison base
   expect(screen.getByText(/Scope: Entire codebase/)).toBeTruthy();
   expect(screen.queryByText(/Base:/)).toBeNull();
 });
+
+test("source dropdown shows the saved source, matches the actions and switches sources", async () => {
+  const calls: string[] = [];
+  render(<TopBar selection={{ ...selection, side: "index", onSideChange: (side) => calls.push(side) }} actions={actions} status={status} />);
+  const trigger = screen.getByRole("button", { name: "Review source: Staged" });
+  expect(trigger.classList.contains("review-action")).toBe(true);
+  expect(trigger.nextElementSibling).toBe(screen.getByRole("button", { name: "AI Review Handoff" }));
+  expect(screen.queryByRole("combobox")).toBeNull();
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  expect(await screen.findByRole("menuitemradio", { name: "Staged", checked: true })).toBeTruthy();
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Working tree" }));
+  expect(screen.queryByRole("menu")).toBeNull();
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Committed" }));
+  expect(calls).toEqual(["worktree", "head"]);
+});
+
+test("source dropdown is disabled while review content is loading", () => {
+  render(<TopBar selection={{ ...selection, loading: true }} actions={actions} status={status} />);
+  expect((screen.getByRole("button", { name: "Review source: Committed" }) as HTMLButtonElement).disabled).toBe(true);
+});

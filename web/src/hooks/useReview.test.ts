@@ -26,6 +26,7 @@ vi.mock("../api/api", () => {
       commits: vi.fn(),
       diff: vi.fn(),
       reviewDiff: vi.fn(),
+      setReviewSide: vi.fn(async () => {}),
       setReviewStatus: vi.fn(async () => {}),
       createReview: vi.fn(async (repo: string, head: string, base?: string) => mkReview(repo, head, base)),
       getReview: vi.fn(async (id: number) => ({ ...mkReview("repo", "main", "main"), id })),
@@ -802,4 +803,28 @@ test("a saved review reopens its exact source and from commit without creating a
   expect(result.current.error).toBe("Checked-out branch changed");
   expect(result.current.side).toBe("index");
   expect(result.current.head).toBe("feature");
+});
+
+test("saved source changes persist before reloading content and failed changes keep the previous source", async () => {
+  vi.mocked(api.branches).mockResolvedValue(onFeature);
+  const saved = { id: 70, repoPath: "A", headRef: "feature", baseRef: "main", headSha: "sha", status: "draft" as const, summary: "", comments: [], reviewedFiles: [], createdAt: "", updatedAt: "", scopeSide: "index" as const, scopeFrom: "all", scopeConfigured: true };
+  vi.mocked(api.getReview).mockResolvedValue(saved);
+  vi.mocked(api.reviewDiff).mockResolvedValue({ base: "base", head: "feature", files: [] });
+  const { result } = renderHook(() => useReview({ project: "A", branch: "feature", base: "main", side: "index", reviewId: 70, repoPath: "A" }));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  await waitFor(() => expect(result.current.review?.id).toBe(70));
+  expect(result.current.side).toBe("index");
+  vi.mocked(api.setReviewSide).mockImplementationOnce(async () => {
+    vi.mocked(api.getReview).mockResolvedValue({ ...saved, scopeSide: "worktree" });
+    vi.mocked(api.reviewDiff).mockResolvedValue({ base: "worktree-base", head: "feature", files: [] });
+  });
+  await act(async () => { await result.current.changeSide("worktree"); });
+  expect(api.setReviewSide).toHaveBeenCalledWith(70, "worktree");
+  expect(result.current.side).toBe("worktree");
+  expect(result.current.baseSha).toBe("worktree-base");
+  vi.mocked(api.setReviewSide).mockRejectedValueOnce(new Error("Checkout changed"));
+  await act(async () => { await result.current.changeSide("index"); });
+  expect(result.current.error).toBe("Checkout changed");
+  expect(result.current.side).toBe("worktree");
+  expect(api.createReview).not.toHaveBeenCalled();
 });

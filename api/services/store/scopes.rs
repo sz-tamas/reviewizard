@@ -40,6 +40,23 @@ impl Store {
         })
     }
 
+    pub fn set_review_side(&self, id: i64, side: Side) -> Result<()> {
+        let side = match side {
+            Side::Head => "head",
+            Side::Index => "index",
+            Side::Worktree => "worktree",
+        };
+        self.with(|db| {
+            if db.execute(
+                "UPDATE reviews SET scope_side=?2,scope_configured=1,updated_at=?3 WHERE id=?1",
+                params![id, side, now()],
+            )? == 0
+            {
+                return Err(rusqlite::Error::QueryReturnedNoRows);
+            }
+            Ok(())
+        })
+    }
     pub fn set_review_status(&self, id: i64, status: &str) -> Result<()> {
         self.with(|db| {
             if db.execute(

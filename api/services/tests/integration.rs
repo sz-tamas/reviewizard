@@ -1299,6 +1299,59 @@ mod git_cases;
 mod persistence;
 
 #[tokio::test]
+async fn project_list_reads_root_metadata_without_changing_the_repository() {
+    use serde_json::json;
+    use std::fs;
+    let f = Fixture::new();
+    let app = f.app();
+    let (code, _) = send_json(&app, "POST", "/api/projects", json!({"path": f.0})).await;
+    assert_eq!(code, StatusCode::OK);
+
+    let (_, projects) = send_json(&app, "GET", "/api/projects", json!(null)).await;
+    assert_eq!(
+        projects[0]["metadata"],
+        json!({"branch": "feature/test", "readme": null, "license": null, "languages": []})
+    );
+
+    fs::write(f.0.join("readme.MD"), "Fixture documentation").unwrap();
+    fs::write(f.0.join("LICENSE"), "Apache License\nVersion 2.0").unwrap();
+    fs::write(f.0.join("Cargo.toml"), "[package]\nrust-version = \"1.94\"").unwrap();
+    fs::write(f.0.join("mise.toml"), "[tools]\nrust = \"1.94.1\"").unwrap();
+    fs::write(
+        f.0.join("package.json"),
+        r#"{"engines":{"node":">=24"},"devDependencies":{"typescript":"^5.6"}}"#,
+    )
+    .unwrap();
+
+    let nested = f.0.join("nested");
+    fs::create_dir(&nested).unwrap();
+    fs::write(nested.join("go.mod"), "go 1.25").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(nested.join("go.mod"), f.0.join("go.mod")).unwrap();
+
+    let index = fs::read(f.0.join(".git/index")).unwrap();
+    let head = fs::read(f.0.join(".git/HEAD")).unwrap();
+    let (code, projects) = send_json(&app, "GET", "/api/projects", json!(null)).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(
+        projects[0]["metadata"],
+        json!({
+            "branch": "feature/test",
+            "readme": "readme.MD",
+            "license": "Apache-2.0",
+            "languages": [
+                {"name": "Node.js", "version": ">=24"},
+                {"name": "Rust", "version": "1.94.1"},
+                {"name": "TypeScript", "version": "^5.6"},
+            ]
+        })
+    );
+    assert_eq!(fs::read(f.0.join(".git/index")).unwrap(), index);
+    assert_eq!(fs::read(f.0.join(".git/HEAD")).unwrap(), head);
+    assert_eq!(fs::read_to_string(f.0.join("a.txt")).unwrap(), "working\n");
+}
+
+#[tokio::test]
 async fn saved_review_scopes_preserve_source_sides_and_do_not_reuse_legacy_reviews() {
     use serde_json::json;
     let f = Fixture::new();
@@ -1557,4 +1610,192 @@ async fn whole_folder_reviews_save_and_open_with_detached_or_unborn_head() {
         assert_eq!(loaded["reviewedFiles"], json!(["a.txt"]));
         assert_eq!(loaded["comments"][0]["anchorStatus"], "current");
     }
+}
+
+#[tokio::test]
+async fn delete_review_returns_no_content_then_not_found() {
+    let store = Store::in_memory().unwrap();
+    let review = store
+        .create_or_get_review("/disposable", "main", "feature", "sha")
+        .unwrap();
+    let router = http::router(Arc::new(AppState {
+        workspace: Workspace::open(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap(),
+        store: store.clone(),
+        diffs: Default::default(),
+        live: Default::default(),
+    }));
+    for expected in [StatusCode::NO_CONTENT, StatusCode::NOT_FOUND] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/reviews/{}", review.id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
+    assert!(store.get_review(review.id).is_err());
+}
+
+#[tokio::test]
+async fn saved_source_switches_validate_preserve_anchors_and_derive_selected_content() {
+    use reviewizard::services::{
+        review,
+        store::{Comment, FileReviewMark, SavedScope, Side},
+    };
+    let fixture = Fixture::new();
+    let store = Store::in_memory().unwrap();
+    let path = fixture.0.to_string_lossy().into_owned();
+    let canonical = fixture
+        .0
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let project = store.add_project("fixture", &path, &canonical).unwrap();
+    let saved = store
+        .save_scoped_review(SavedScope {
+            mode: "changes",
+            project_id: project.id,
+            path: &path,
+            head: "feature/test",
+            base: "main",
+            sha: "",
+            from: "all",
+            side: Side::Head,
+        })
+        .unwrap();
+    let comment = store
+        .add_comment(Comment {
+            review_id: saved.id,
+            file_path: "a.txt".into(),
+            body: "Keep this anchor".into(),
+            side: Side::Head,
+            ..Default::default()
+        })
+        .unwrap();
+    store
+        .set_files_reviewed(
+            saved.id,
+            &[FileReviewMark {
+                path: "a.txt".into(),
+                content_hash: "".into(),
+            }],
+            true,
+            Side::Head,
+        )
+        .unwrap();
+    let router = http::router(Arc::new(AppState {
+        workspace: Workspace::open(&fixture.0).unwrap(),
+        store: store.clone(),
+        diffs: Default::default(),
+        live: Default::default(),
+    }));
+    for (side, expected_content) in [
+        ("index", "staged"),
+        ("worktree", "working"),
+        ("head", "feature"),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/reviews/{}/source", saved.id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"side":"{side}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let loaded = review::load(&store, saved.id, None).await.unwrap();
+        assert_eq!(serde_json::to_value(&loaded).unwrap()["scopeSide"], side);
+        assert_eq!(loaded.comments[0].id, comment.id);
+        assert_eq!(loaded.comments[0].side, Side::Head);
+        assert_eq!(loaded.reviewed_files.is_empty(), side != "head");
+        let diff =
+            serde_json::to_value(review::scopes::diff(&store, saved.id).await.unwrap()).unwrap();
+        assert!(diff.to_string().contains(expected_content));
+    }
+    fixture.git(&["switch", "-c", "other"]);
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/reviews/{}/source", saved.id))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"side":"index"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(store.get_review(saved.id).unwrap().scope_side, Side::Head);
+}
+
+#[tokio::test]
+async fn resolution_handoff_reply_then_resolve_retains_thread_and_review_status() {
+    use reviewizard::services::store::Comment;
+    let f = Fixture::new();
+    let store = Store::in_memory().unwrap();
+    let review = store
+        .create_or_get_review(f.0.to_str().unwrap(), "main", "HEAD", &f.sha())
+        .unwrap();
+    let comment = store
+        .add_comment(Comment {
+            review_id: review.id,
+            file_path: "a.txt".into(),
+            body: "Fix this".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let app = http::router(Arc::new(AppState {
+        workspace: Workspace::open(&f.0).unwrap(),
+        store: store.clone(),
+        diffs: Default::default(),
+        live: Default::default(),
+    }));
+    let (code, export) = send_json(
+        &app,
+        "POST",
+        &format!("/api/reviews/{}/export?instructions=true", review.id),
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    let markdown = export["markdown"].as_str().unwrap();
+    assert!(markdown.contains(&format!("/api/comments/{}/resolved", comment.id)));
+    let status = store.get_review(review.id).unwrap().status;
+    let (code, _) = send_json(&app, "POST", &format!("/api/comments/{}/replies", comment.id), serde_json::json!({"body":"Fixed the trigger; regression check passed.","author":"codex-review-agent"})).await;
+    assert_eq!(code, StatusCode::OK);
+    assert!(!store.get_comment(comment.id).unwrap().resolved);
+    for resolved in [true, false, true] {
+        let (code, _) = send_json(
+            &app,
+            "POST",
+            &format!("/api/comments/{}/resolved", comment.id),
+            serde_json::json!({"resolved":resolved}),
+        )
+        .await;
+        assert_eq!(code, StatusCode::NO_CONTENT);
+        let saved = store.get_comment(comment.id).unwrap();
+        assert_eq!(saved.resolved, resolved);
+        assert_eq!(saved.replies.len(), 1);
+        assert_eq!(saved.replies[0].author, "codex-review-agent");
+    }
+    assert_eq!(store.get_review(review.id).unwrap().status, status);
+    let (code, _) = send_json(
+        &app,
+        "POST",
+        "/api/comments/999999/resolved",
+        serde_json::json!({"resolved":true}),
+    )
+    .await;
+    assert_eq!(code, StatusCode::NOT_FOUND);
 }

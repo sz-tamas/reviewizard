@@ -75,3 +75,30 @@ pub async fn reviewed(
         .await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
+
+pub async fn delete(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<i64>, PathRejection>,
+) -> Result<axum::http::StatusCode, ServiceError> {
+    state
+        .mutations()
+        .delete_review(super::input::id(path)?)
+        .await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+#[derive(serde::Deserialize)]
+pub struct SourceSide {
+    side: crate::services::store::Side,
+}
+pub async fn source(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<i64>, PathRejection>,
+    input: Result<CompatJson<SourceSide>, ServiceError>,
+) -> Result<axum::http::StatusCode, ServiceError> {
+    state
+        .mutations()
+        .change_review_side(super::input::id(path)?, super::input::body(input)?.side)
+        .await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}

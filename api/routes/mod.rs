@@ -41,9 +41,13 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/blob", get(files::blob))
         .route("/api/diff", get(diff::get))
         .route("/api/reviews", post(reviews::create))
-        .route("/api/reviews/{id}", get(reviews::get))
+        .route(
+            "/api/reviews/{id}",
+            get(reviews::get).delete(reviews::delete),
+        )
         .route("/api/reviews/{id}/diff", get(reviews::diff))
         .route("/api/reviews/{id}/status", post(reviews::status))
+        .route("/api/reviews/{id}/source", post(reviews::source))
         .route("/api/reviews/{id}/events", get(events::get))
         .route("/api/reviews/{id}/export", post(exports::json))
         .route("/api/reviews/{id}/export.md", post(exports::markdown))

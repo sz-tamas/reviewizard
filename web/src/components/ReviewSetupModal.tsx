@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, GitBranch } from "lucide-react";
 import { api } from "../api/api";
 import type { Project, Review, Side } from "../api/types";
+import { ReviewDropdown } from "./ReviewDropdown";
 import { Modal } from "./Modal";
 import { ViewToggle } from "./ViewToggle";
 
@@ -61,37 +62,47 @@ export function ReviewSetupModal({ projects, initialProject, onClose, onSaved }:
         <ViewToggle<"changes" | "codebase"> ariaLabel="Review scope" value={mode} onChange={setMode} disabled={pending}
           options={[{ value: "changes", label: "Changes" }, { value: "codebase", label: "Codebase" }]} />
         <div className={`review-setup-references${mode === "codebase" ? " review-setup-codebase" : ""}`}>
-          <label>Repository
-            <select aria-label="Review repository" value={project.id} disabled={pending} onChange={(e) => {
-              setProjectId(Number(e.target.value)); setHead(""); setBase(""); setFrom("all"); setSide("head"); setError("");
-            }}>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.path}</option>)}
-            </select>
-          </label>
+          <div className="review-setup-field">
+            <span>Repository</span>
+            <ReviewDropdown fullWidth label="Review repository" value={String(project.id)} disabled={pending}
+              options={projects.map((p) => ({ value: String(p.id), label: `${p.name} — ${p.path}` }))}
+              onChange={(value) => {
+                setProjectId(Number(value)); setHead(""); setBase(""); setFrom("all"); setSide("head"); setError("");
+              }} />
+          </div>
           {mode === "changes" && <>
-          <span className="review-setup-separator">/</span>
-          <label><span><GitBranch size={15} />Head branch</span>
-            <select aria-label="Review head branch" value={selectedHead} disabled={pending || !list.length} onChange={(e) => { setHead(e.target.value); setFrom("all"); }}>
-              {!list.length && <option value="">{branches.isPending ? "Loading…" : "No local branches"}</option>}
-              {list.filter((b) => !b.isRemote).map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}
-            </select>
-          </label>
-          <ArrowRight className="review-setup-separator" size={20} />
-          <label>Merge into / base
-            <select aria-label="Review base branch" value={base} disabled={pending || !selectedHead} onChange={(e) => { setBase(e.target.value); setFrom("all"); }}>
-              <option value="">auto{main ? ` (${main})` : ""}</option>
-              {list.map((b) => <option key={b.name} value={b.name}>{b.name}{b.isRemote ? " (remote, last fetched)" : ""}</option>)}
-            </select>
-          </label>
+            <span className="review-setup-separator">/</span>
+            <div className="review-setup-field">
+              <span><GitBranch size={15} />Head branch</span>
+              <ReviewDropdown fullWidth label="Review head branch" value={selectedHead}
+                disabled={pending || !list.some((branch) => !branch.isRemote)}
+                placeholder={branches.isPending ? "Loading…" : "No local branches"}
+                options={list.filter((b) => !b.isRemote).map((b) => ({ value: b.name, label: b.name }))}
+                onChange={(value) => { setHead(value); setFrom("all"); }} />
+            </div>
+            <ArrowRight className="review-setup-separator" size={20} />
+            <div className="review-setup-field">
+              <span>Merge into / base</span>
+              <ReviewDropdown fullWidth label="Review base branch" value={base} disabled={pending || !selectedHead}
+                options={[
+                  { value: "", label: main ? `auto (${main})` : "auto" },
+                  ...list.map((b) => ({ value: b.name, label: b.isRemote ? `${b.name} (remote, last fetched)` : b.name })),
+                ]}
+                onChange={(value) => { setBase(value); setFrom("all"); }} />
+            </div>
           </>}
         </div>
         {mode === "changes" && <div className="review-setup-range">
-          <label>from
-            <select aria-label="Review starting commit" value={from} disabled={pending || !selectedHead || commits.isPending} onChange={(e) => setFrom(e.target.value)}>
-              <option value="all">All (whole branch)</option>
-              {(commits.data ?? []).map((c) => <option key={c.sha} value={c.sha}>{c.shortSha} — {c.subject}</option>)}
-            </select>
-          </label>
+          <div className="review-setup-field">
+            <span>from</span>
+            <ReviewDropdown fullWidth label="Review starting commit" value={from}
+              disabled={pending || !selectedHead || commits.isPending}
+              options={[
+                { value: "all", label: "All (whole branch)" },
+                ...(commits.data ?? []).map((c) => ({ value: c.sha, label: `${c.shortSha} — ${c.subject}` })),
+              ]}
+              onChange={setFrom} />
+          </div>
           <span>to</span>
           <ViewToggle<Side> ariaLabel="Review source side" value={selectedSide} onChange={setSide} disabled={pending || !selectedHead}
             options={[

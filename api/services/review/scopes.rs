@@ -71,7 +71,8 @@ pub async fn validate_scope(
     } else {
         resolve(repo, head).await?
     };
-    if side != Side::Head && !folder {
+    // A whole-codebase assignment saved against HEAD follows the checkout itself.
+    if side != Side::Head && !(mode == "codebase" && head == "HEAD") {
         let args = ["symbolic-ref", "--quiet", "--short", "HEAD"];
         let output = crate::utils::process::git_output(&repo.path, &args, None).await?;
         if output.status.code() == Some(1) {
@@ -195,4 +196,27 @@ pub async fn diff(store: &Store, id: i64) -> Result<crate::services::diff::Diff,
         head: review.head_ref,
         files: if files.is_empty() { None } else { Some(files) },
     })
+}
+
+/// Explicitly change the saved source only after validating it against the repository.
+pub async fn change_side(store: &Store, id: i64, side: Side) -> Result<(), ServiceError> {
+    let review = store
+        .run(move |s| {
+            let review = s.get_review(id)?;
+            s.validate_registered_repo(&review.repo_path)?;
+            Ok(review)
+        })
+        .await?;
+    validate_scope(
+        &Repo {
+            path: review.repo_path.into(),
+        },
+        &review.head_ref,
+        &review.base_ref,
+        &review.scope_from,
+        side,
+        &review.scope_mode,
+    )
+    .await?;
+    store.run(move |s| s.set_review_side(id, side)).await
 }

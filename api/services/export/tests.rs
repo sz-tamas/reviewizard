@@ -59,9 +59,16 @@ fn renders_summary_renames_fences_replies_and_excludes_resolved() {
 fn instructions_are_opt_in_and_use_concrete_ids() {
     let out = render(&fixture(), true, "http://127.0.0.1:7777");
     assert!(out.contains("## Addressing these comments"));
-    assert!(out.contains("make the change and reply"));
+    assert!(out.contains("then resolve the comment only after that reply succeeds"));
+    assert!(out.contains("verification fails"));
+    assert!(out.contains("leave the comment open for the user"));
+    assert!(out.contains("do not commit, mark files reviewed or complete the overall review"));
+    assert!(out.contains("/api/comments/42/resolved"));
+    assert!(out.contains("\"resolved\":true"));
     assert!(out.contains("trust the quoted snippet over the line number"));
-    assert!(out.contains("curl -X POST http://127.0.0.1:7777/api/comments/42/replies"));
+    assert!(out.contains(
+        "curl --fail-with-body -sS -X POST http://127.0.0.1:7777/api/comments/42/replies"
+    ));
     assert!(render(&Review::default(), true, "").contains("/api/comments/<comment-id>/replies"));
 }
 #[test]

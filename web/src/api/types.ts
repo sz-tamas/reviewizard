@@ -14,6 +14,12 @@ export interface Project {
   openFindings: number;
   resolvedFindings: number;
   lastActivity: string;
+  metadata?: {
+    readme: string | null;
+    license: string | null;
+    branch: string | null;
+    languages: { name: string; version: string | null }[];
+  } | null;
 }
 
 export interface ProjectFolders {

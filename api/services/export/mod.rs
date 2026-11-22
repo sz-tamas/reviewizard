@@ -146,7 +146,8 @@ pub fn render(review: &Review, instructions: bool, base_url: &str) -> String {
             .filter(|c| c.id > 0)
             .map(|c| c.id.to_string())
             .unwrap_or_else(|| "<comment-id>".into());
-        write!(out,"```sh\ncurl -X POST {url}/api/comments/{id}/replies \\\n  -H 'Content-Type: application/json' \\\n  -d '{{\"body\": \"your reply here\"}}'\n```\n").unwrap();
+        write!(out,"```sh\ncurl --fail-with-body -sS -X POST {url}/api/comments/{id}/replies \\\n  -H 'Content-Type: application/json' \\\n  -d '{{\"body\": \"your reply here\"}}'\n```\n").unwrap();
+        write!(out, "\nAfter the reply succeeds and the fix is verified:\n\n```sh\ncurl --fail-with-body -sS -X POST {url}/api/comments/{id}/resolved \\\n  -H 'Content-Type: application/json' \\\n  -d '{{\"resolved\":true}}'\n```\n").unwrap();
     }
     out
 }

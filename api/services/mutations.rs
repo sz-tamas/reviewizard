@@ -105,6 +105,11 @@ fn side(value: &str) -> Result<Side, ServiceError> {
         .ok_or_else(|| ServiceError::bad("invalid side: want \"head\", \"worktree\" or \"index\""))
 }
 impl Mutations<'_> {
+    pub async fn change_review_side(&self, id: i64, side: Side) -> Result<(), ServiceError> {
+        review::scopes::change_side(self.store, id, side).await?;
+        self.live.publish(id, true, true);
+        Ok(())
+    }
     pub async fn status(&self, id: i64, q: Status) -> Result<(), ServiceError> {
         if !matches!(q.status.as_str(), "draft" | "completed") {
             return Err(ServiceError::bad("status must be draft or completed"));
@@ -168,6 +173,11 @@ impl Mutations<'_> {
             .run(move |s| s.create_or_get_review(&path, &base, &q.head, &sha))
             .await?;
         review::load(self.store, r.id, Some(self.diffs)).await
+    }
+    pub async fn delete_review(&self, id: i64) -> Result<(), ServiceError> {
+        self.store.run(move |s| s.delete_review(id)).await?;
+        self.live.publish(id, false, false);
+        Ok(())
     }
     pub async fn reset(&self, id: i64) -> Result<(), ServiceError> {
         self.store.run(move |s| s.reset_review(id)).await?;

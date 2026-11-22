@@ -25,7 +25,7 @@ page and autonomous agent execution remain planned.
 ## Source of truth and layout
 
 Read the relevant source before relying on prose. Commands and runtime wiring are
-owned by `mise.toml`, `process-compose.yaml`, `Cargo.toml`, `web/package.json` and
+owned by `mise.toml`, `scripts/start.mjs`, `process-compose.yaml`, `Cargo.toml`, `web/package.json` and
 `web/vite.config.ts`. See `api/README.md` for service/API details and `docs/RUNNING.md`
 for startup and data recovery. `SKILL.md` provides the project implementation workflow.
 
@@ -49,10 +49,10 @@ Use mise from the project root. Hidden tasks are still callable.
 | Task | Actual behavior |
 | --- | --- |
 | `mise run install` | Installs pinned mise tools, rustfmt/Clippy, locked frontend packages and locked Rust dependencies without building or starting the applications. |
-| `mise run start` | Installs locked frontend dependencies, then runs process-compose with both processes. |
-| `mise run dev` | Runs the same stack with bacon rebuilding/restarting the backend on changes and Vite hot reload. |
+| `mise run start` | Installs locked frontend dependencies, then starts background API/UI child processes through `scripts/start.mjs`; prints the URL when ready and stops both on Ctrl+C. |
+| `mise run dev` | Runs process-compose with bacon rebuilding/restarting the backend on changes and Vite hot reload. |
 | `mise run dev:backend` | Runs the Rust API using `REVIEWIZARD_ROOT` (default `.`) and `REVIEWIZARD_BACKEND_PORT` (default `7777`). |
-| `mise run dev:frontend` | Runs Vite on loopback using `REVIEWIZARD_FRONTEND_PORT` (default `5173`), with strict port selection. |
+| `mise run dev:frontend` | Runs Vite on loopback using `REVIEWIZARD_FRONTEND_PORT` (default `5173`), with strict port selection, and opens the UI in the default browser. |
 | `mise run build` | Builds backend and frontend independently. |
 | `mise run check:rust` | Rust formatting, Clippy with warnings denied, and tests. |
 | `mise run check:web` | Installs frontend dependencies and runs Vitest. |
@@ -60,10 +60,12 @@ Use mise from the project root. Hidden tasks are still callable.
 | `mise run check:default` | Builds the release API and runs POSIX standalone/persistence/SSE acceptance using Python 3. |
 | `mise run check` | Rust checks, frontend tests and standalone API acceptance. |
 
-Open the UI at `http://127.0.0.1:5173`; the API health endpoint is
+Startup opens the UI in the default browser through Vite, after backend readiness.
+The UI is at `http://127.0.0.1:5173`; the API health endpoint is
 `http://127.0.0.1:7777/healthz`. Backend `/` is a JSON 404, not a UI entrypoint.
-Process-compose injects `REVIEWIZARD_API_URL` into Vite to match the backend port
-and waits for backend health before starting the frontend. Vite proxies `/api`,
+Both the start launcher and development process-compose stack inject
+`REVIEWIZARD_API_URL` into Vite to match the backend port and wait for backend
+health before starting the frontend. Vite proxies `/api`,
 including SSE; retain that routing when modifying development setup.
 
 There is no `start.sh` entrypoint. `mise run start` is not the former positional-root
