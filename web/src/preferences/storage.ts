@@ -13,6 +13,7 @@ export const LS = {
   commentSort: "reviewizard.commentSort",
   agentPromptsByRepo: "reviewizard.agentPromptsByRepo",
   theme: "reviewizard.theme",
+  appearance: "reviewizard.appearance",
   themeByRepo: "reviewizard.themeByRepo",
   fonts: "reviewizard.fonts",
   fontsByRepo: "reviewizard.fontsByRepo",

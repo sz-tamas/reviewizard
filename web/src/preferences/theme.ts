@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { MermaidConfig } from "mermaid";
-import { LS, getString, readThemePref, writeThemePref } from "./storage";
+import { LS, getString, readThemePref, setString, writeThemePref } from "./storage";
 
 // A theme is one entry here plus a `:root[data-theme="<id>"]` token block in styles.css; Shiki and mermaid palettes are named per theme.
 export type ThemeId =
@@ -142,7 +142,7 @@ export const THEMES: readonly Theme[] = [
 
 // "system" follows the OS (GitHub Dark/Light) live until a theme is picked outright.
 export type ThemePref = ThemeId | "system";
-export const DEFAULT_PREF: ThemePref = "system";
+export const DEFAULT_PREF: ThemePref = "github-dark";
 
 export function isThemeId(v: unknown): v is ThemeId {
   return THEMES.some((t) => t.id === v);
@@ -179,7 +179,11 @@ export function resolveTheme(pref: ThemePref): ThemeId {
 
 // Seeded from reviewizard.repo (the repo useReview restores) so the first paint is already that repo's theme.
 let repo = getString(LS.repo);
-let pref: ThemePref = readStoredPref(repo);
+type Appearance = "github-dark" | "github-light";
+const savedAppearance = getString(LS.appearance);
+let appearance: Appearance | undefined =
+  savedAppearance === "github-dark" || savedAppearance === "github-light" ? savedAppearance : undefined;
+let pref: ThemePref = appearance ?? readStoredPref(repo);
 let current: ThemeId = resolveTheme(pref);
 const listeners = new Set<() => void>();
 
@@ -211,15 +215,26 @@ export function getThemePref(): ThemePref {
 export function setThemeRepo(next: string): void {
   if (next === "" || next === repo) return;
   repo = next;
-  pref = readStoredPref(repo);
+  pref = appearance ?? readStoredPref(repo);
   paint(resolveTheme(pref));
 }
 
 export function setThemePref(next: ThemePref): void {
   if (next === pref) return;
+  if (appearance) {
+    appearance = undefined;
+    setString(LS.appearance, "");
+  }
   pref = next;
   writeThemePref(repo, next);
   paint(resolveTheme(next));
+}
+
+export function setAppearance(next: Appearance): void {
+  appearance = next;
+  setString(LS.appearance, next);
+  pref = next;
+  paint(next);
 }
 
 // Exported for fonts.ts: with no family override the code face comes from the theme, and which

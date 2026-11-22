@@ -23,6 +23,9 @@ folder barrel exports are unnecessary. Keep API models in `api/types.ts` and use
 React 18 + Vite, TanStack Router v1, TanStack Query v5, Tailwind CSS v4 and
 shadcn/ui (Radix, New York). Inter is bundled for the UI; JetBrains Mono is bundled
 for code in every theme. Saved custom fonts and installed-font selection remain supported.
+Use the switch next to Local in the header to change between dark and light.
+Dark is the default, and a selection applies across projects and reviews on the
+same browser origin. The header selection takes precedence over older theme preferences.
 
 Use the Node.js and pnpm versions pinned in `mise.toml` and `web/package.json`.
 From the project root:

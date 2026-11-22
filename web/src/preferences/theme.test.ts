@@ -51,8 +51,7 @@ test("a repo with no pick of its own falls back to the global default", () => {
 // No repo is selected here, so the pick lands on that global default.
 test("setThemePref moves the <html> attribute, the stored value and every subscriber together", () => {
   const { result } = renderHook(() => ({ theme: useTheme(), pref: useThemePref() }));
-  // jsdom has no matchMedia, so the "system" default resolves dark here.
-  expect(result.current).toEqual({ theme: "github-dark", pref: "system" });
+  expect(result.current).toEqual({ theme: "github-dark", pref: "github-dark" });
   expect(document.documentElement.dataset.theme).toBe("github-dark");
   expect(document.documentElement.classList.contains("dark")).toBe(true);
 
@@ -77,7 +76,7 @@ test("the pick is remembered per repo, and pointing the store at another repo re
 
   // A repo with no pick of its own shows the default — and takes its own.
   act(() => setThemeRepo("api"));
-  expect(result.current).toEqual({ theme: "github-dark", pref: "system" });
+  expect(result.current).toEqual({ theme: "github-dark", pref: "github-dark" });
   expect(document.documentElement.dataset.theme).toBe("github-dark");
   expect(document.documentElement.classList.contains("dark")).toBe(true);
   act(() => setThemePref("darcula"));
@@ -118,8 +117,10 @@ test("'system' follows the OS between the two GitHub themes, until a theme is pi
   const q = stubScheme(false);
   vi.resetModules();
   const t = await import("./theme"); // a fresh store, initialized against the stub
-  expect(t.getTheme()).toBe("github-light");
+  expect(t.getTheme()).toBe("github-dark");
   expect(t.resolveTheme("system")).toBe("github-light");
+  t.setThemePref("system");
+  expect(t.getTheme()).toBe("github-light");
 
   q.flip(true);
   expect(t.getTheme()).toBe("github-dark");
