@@ -429,7 +429,7 @@ async fn review_http_reads_report_database_fault_as_500() {
         .with(|db| db.execute_batch("DROP TABLE reviews"))
         .unwrap();
     let app = http::router(std::sync::Arc::new(AppState {
-        workspace: Workspace::open(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap(),
+        workspace: Workspace::open(&std::env::temp_dir()).unwrap(),
         store,
         diffs: Default::default(),
         live: Default::default(),

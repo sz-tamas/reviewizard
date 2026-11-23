@@ -1,5 +1,9 @@
 # reviewizard
 
+[![CI](https://github.com/sz-tamas/reviewizard/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sz-tamas/reviewizard/actions/workflows/ci.yml)
+[![Rust](https://img.shields.io/badge/Rust-DEA584?logo=rust&logoColor=black)](https://www.rust-lang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+
 A local code-review workspace for you and your coding agent. Review changes or an
 entire codebase in your browser, discuss findings next to the code, and keep track
 of what you have reviewed across multiple repositories.

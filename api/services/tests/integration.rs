@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tower::ServiceExt;
 fn app() -> axum::Router {
     http::router(Arc::new(AppState {
-        workspace: Workspace::open(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap(),
+        workspace: Workspace::open(&std::env::temp_dir()).unwrap(),
         store: Store::in_memory().unwrap(),
         diffs: Default::default(),
         live: Default::default(),
@@ -1116,7 +1116,7 @@ async fn sse_connected_keepalive_meta_and_shutdown_frames() {
     use http_body_util::BodyExt;
     let store = Store::in_memory().unwrap();
     let state = Arc::new(AppState {
-        workspace: Workspace::open(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap(),
+        workspace: Workspace::open(&std::env::temp_dir()).unwrap(),
         store,
         diffs: Default::default(),
         live: Default::default(),
@@ -1619,7 +1619,7 @@ async fn delete_review_returns_no_content_then_not_found() {
         .create_or_get_review("/disposable", "main", "feature", "sha")
         .unwrap();
     let router = http::router(Arc::new(AppState {
-        workspace: Workspace::open(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap(),
+        workspace: Workspace::open(&std::env::temp_dir()).unwrap(),
         store: store.clone(),
         diffs: Default::default(),
         live: Default::default(),
