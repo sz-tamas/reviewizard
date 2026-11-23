@@ -25,11 +25,11 @@ function HandoffGuide() {
       </button>
       {expanded && (
         <div className="app-help-guide">
-          <p>Keep reviewizard running and use an AI tool of your choice, such as Codex or Claude Code, that can access the repository and call the local reviewizard API. Select the same repository in a desktop app or start a CLI session from its folder. If your tool prompts for API access, check that the address matches the one in the handoff before approving.</p>
+          <p>Keep reviewizard running and use a local AI tool that can access the repository and call the reviewizard API from the same machine. Select the same repository in a desktop app or start a CLI session from its folder. If your tool prompts for API access, check that the address matches the one in the handoff before approving.</p>
           <h4>Ask for a review</h4>
           <ol>
-            <li>Open the saved review and select <strong>AI Review Handoff</strong>. Pick your review options and choose a format under <strong>Agent / format</strong>. Use a preset for your tool if available, or choose <strong>Markdown</strong> for a general-purpose prompt.</li>
-            <li>Select <strong>Generate Handoff Prompt</strong>, then <strong>Copy</strong>. Paste and submit it in your tool with permission to read the code and post findings to reviewizard.</li>
+            <li>Open the saved review and select <strong>AI Review Handoff</strong>. Pick your review options and choose a format under <strong>Agent / format</strong>. The default, <strong>Generic agent (Markdown)</strong>, is a paste-ready prompt for local tools.</li>
+            <li>Select <strong>Copy</strong> at the bottom of the dialog. Paste and submit it in your tool with permission to read the code and post findings to reviewizard.</li>
             <li>Return to the review to read the findings.</li>
           </ol>
           <h4>Address findings and complete the review</h4>
@@ -86,7 +86,7 @@ export function AppHeader() {
             </section>
             <section className="app-help-section app-help-handoffs">
               <h3><IconArrowRight aria-hidden="true" />Optional handoffs</h3>
-              <p>You choose whether to share a handoff and which tool receives it. Codex, Claude Code, or another tool can use it with access to the local reviewizard API.</p>
+              <p>You choose whether to share a handoff and which tool receives it. The tool needs access to the repository and the reviewizard API from the same machine.</p>
               <ul className="app-help-modes">
                 <li><IconFileSearch aria-hidden="true" /><span><strong>Review.</strong> The tool reads the code and posts findings through the API.</span></li>
                 <li><IconTools aria-hidden="true" /><span><strong>Completion.</strong> The tool also needs permission to edit the code so it can fix and verify findings, then reply and resolve them through the API.</span></li>

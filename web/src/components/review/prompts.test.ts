@@ -106,16 +106,21 @@ test("handoffs diagnose sandbox access before declaring the local server unavail
     const output = generateHandoffPrompt(vars, vars.repoPath, { ...DEFAULT_HANDOFF_OPTIONS, format: format.value });
     const guidance = format.value === "json" ? JSON.parse(output).connectionInstructions : output;
     expect(guidance).toContain("curl exit 7");
-    expect(guidance).toContain("sandbox_permissions=require_escalated");
-    expect(guidance).toContain("Do not bypass a denial");
-    expect(guidance).toContain("remote/cloud");
+    expect(guidance).toContain("same machine as reviewizard");
+    expect(guidance).toContain("your tool’s approval mechanism");
+    expect(guidance).not.toContain("sandbox_permissions");
     expect(output).not.toContain("If this fails, stop");
   }
 });
 
-test("the persisted Codex format explicitly supports desktop and CLI", () => {
+test("the default format generates a generic local agent prompt", () => {
   const output = generateHandoffPrompt(vars, vars.repoPath, DEFAULT_HANDOFF_OPTIONS);
-  expect(DEFAULT_HANDOFF_OPTIONS.format).toBe("codex-cli");
+  expect(output).toContain("# Generic agent (Markdown) review handoff");
+  expect(output).not.toMatch(/Codex|Claude/i);
+});
+
+test("the Codex format explicitly supports desktop and CLI", () => {
+  const output = generateHandoffPrompt(vars, vars.repoPath, { ...DEFAULT_HANDOFF_OPTIONS, format: "codex-cli" });
   expect(output).toContain("Codex (desktop / CLI)");
   expect(output).toContain("local Codex desktop app or Codex CLI session");
 });

@@ -7,6 +7,8 @@ of what you have reviewed across multiple repositories.
 Everything you do in reviewizard is available through the UI. Your repositories
 stay on your computer, and projects, reviews, findings and replies are saved locally.
 
+![Preview of the reviewizard interface](./reviewizard.png)
+
 ## Get started
 
 Install [mise](https://mise.jdx.dev/getting-started.html) and Git. From the project

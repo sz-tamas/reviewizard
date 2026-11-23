@@ -76,7 +76,7 @@ test("a saved review route keeps the original comments sidebar and loads the sav
   fireEvent.click(screen.getByRole("button", { name: "AI Review Handoff" }));
   const handoff = screen.getByRole("dialog", { name: "AI Review Handoff" });
   expect(within(handoff).getAllByRole("checkbox")).toHaveLength(6);
-  expect(within(handoff).getByRole("button", { name: "Generate Handoff Prompt" })).toBeTruthy();
+  expect(within(handoff).getByRole("button", { name: "Copy", exact: true })).toBeTruthy();
   expect(within(handoff).queryByRole("button", { name: "Address the review" })).toBeNull();
   fireEvent.click(within(handoff).getByRole("button", { name: "Close", exact: true }));
   fireEvent.click(screen.getByRole("button", { name: "Complete Review", exact: true }));
@@ -103,7 +103,6 @@ test("opening a saved codebase review generates an entire-codebase handoff", asy
   expect(api.createReview).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "AI Review Handoff" }));
   const handoff = screen.getByRole("dialog", { name: "AI Review Handoff" });
-  fireEvent.click(within(handoff).getByRole("button", { name: "Generate Handoff Prompt" }));
   const output = (within(handoff).getByRole("textbox", { name: "Generated handoff prompt" }) as HTMLTextAreaElement).value;
   expect(output).toContain("Review the entire codebase");
   expect(output).toContain("including unchanged files");

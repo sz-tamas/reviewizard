@@ -3747,32 +3747,38 @@ kbd {
   .review-metric { min-width: 100px; padding: 8px 10px; }
 }
 
-/* Lens handoff and completion share the existing editable, per-repository prompts. */
-.agent-prompt-editor { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
-.agent-prompt-editor > .modal-subhead, .agent-prompt-editor > .modal-foot { flex-shrink: 0; flex-wrap: wrap; }
-.agent-prompt-editor > .prompt-editor { width: 100%; }
 .modal.complete-review-modal { width: min(960px, 94vw); height: auto; max-height: calc(100dvh - 40px); }
 .complete-review-modal > .modal-head { flex-shrink: 0; }
-.completion-options { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(360px, 1fr); min-height: 0; overflow-y: auto; }
-.completion-prompt-panel { display: flex; flex-direction: column; height: min(400px, 56vh); min-height: 0; min-width: 0; }
-.completion-manual-panel { display: flex; flex-direction: column; gap: 14px; padding: 14px; min-height: 0; min-width: 0; border-left: 1px solid var(--border); }
-.completion-manual-panel h3 { margin: 0; font-size: var(--text-lg); }
-.completion-manual-panel .project-dialog-actions { margin-top: auto; }
-.completion-manual-panel .review-metrics { color: light-dark(var(--text), #e8ebf3); font-family: "Inter", sans-serif; }
-.completion-manual-panel .review-metric { flex: 1; min-width: 0; padding: 8px; }
-.completion-manual-panel .review-findings { gap: 8px; }
+.completion-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 1fr);
+  gap: 14px;
+  padding: 14px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.completion-prompt-panel, .completion-manual-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 8px;
+}
+.completion-prompt-panel { --completion-card-bg: var(--bg-hover); }
+.completion-manual-panel { --completion-card-bg: color-mix(in srgb, var(--bg-elev) 70%, var(--bg)); }
+.completion-prompt-panel, .completion-manual-panel { background: var(--completion-card-bg); }
+.completion-options > section:hover,
+.completion-options > section:focus-within { background: color-mix(in srgb, var(--completion-card-bg) 91%, var(--text)); }
+.completion-options h3 { margin: 0; font-size: var(--text-lg); }
+.completion-prompt-panel > .prompt-editor { width: 100%; min-height: 160px; border-radius: 6px; }
+.completion-prompt-panel > .prompt-hint { margin: 0; }
+.completion-card-action { display: flex; justify-content: center; margin-top: auto; padding-top: 8px; }
 .completion-manual-panel > p { margin: 0; }
 @media (max-width: 760px) {
   .completion-options { grid-template-columns: minmax(0, 1fr); }
-  .completion-manual-panel { border-left: 0; border-top: 1px solid var(--border); }
 }
-@media (max-width: 540px) {
-  .completion-manual-panel .review-metrics { flex-wrap: wrap; }
-  .completion-manual-panel .review-metric { min-width: 130px; }
-  .prompt-editor-controls .prompt-author { width: 100%; order: 1; }
-}
-
-/* A handoff combines lenses into one assignment; generation is explicit. */
+/* A handoff combines lenses into one assignment. */
 .modal.handoff-generator-modal { width: min(660px, 94vw); height: auto; max-height: calc(100dvh - 40px); }
 .handoff-generator-modal > .modal-head { flex-shrink: 0; }
 .handoff-generator-body { display: grid; gap: 14px; padding: 16px; min-height: 0; overflow-y: auto; }
@@ -3789,9 +3795,9 @@ kbd {
 .handoff-severity input { margin: 0; accent-color: var(--accent); }
 .handoff-format { display: grid; gap: 8px; font-size: var(--text-md); font-weight: 650; }
 .handoff-format select { width: 100%; padding: 8px 10px; border: 1px solid var(--control-border); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; }
-.handoff-generate { width: 100%; }
+.handoff-footer { flex-shrink: 0; justify-content: center; }
 .handoff-output { display: grid; gap: 7px; min-width: 0; }
-.handoff-output-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--text-sm); font-weight: 600; }
+.handoff-output > label { font-size: var(--text-sm); font-weight: 600; }
 .handoff-output .handoff-output-text { width: 100%; height: 160px; min-height: 120px; max-height: 280px; padding: 10px; border: 1px solid var(--control-border); border-radius: 7px; resize: vertical; }
 .handoff-hint { margin: 0; font-size: var(--text-xs); color: var(--muted); }
 @media (max-width: 440px) {
@@ -3842,12 +3848,12 @@ kbd {
 }
 .project-review-dates { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
 .project-review-dates time { color: var(--text); }
-.project-review-entry .review-metrics {
-  margin-block-start: auto;
+.project-review-entry .review-metrics { margin-block-start: auto; }
+.review-metrics-compact {
   flex-direction: column;
   gap: 4px;
 }
-.project-review-entry .review-metric {
+.review-metrics-compact .review-metric {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3856,14 +3862,14 @@ kbd {
   border: 0;
   background: none;
 }
-.project-review-entry .review-metric > span { margin: 0; font-size: 11px; color: var(--muted); }
-.project-review-entry .review-metric strong { font-size: 11px; font-weight: inherit; }
-.project-review-entry .review-progress { display: none; }
-.project-review-entry .review-state strong { gap: 5px; }
-.project-review-entry .review-state i { width: 9px; height: 9px; }
-.project-review-entry .review-findings { gap: 5px; }
-.project-review-entry .review-finding-badges { gap: 3px; }
-.project-review-entry .review-finding-badges > span { min-width: 12px; padding: 2px 3px; font-size: 10px; }
+.review-metrics-compact .review-metric > span { margin: 0; font-size: 11px; color: var(--muted); }
+.review-metrics-compact .review-metric strong { font-size: 11px; font-weight: inherit; }
+.review-metrics-compact .review-progress { display: none; }
+.review-metrics-compact .review-state strong { gap: 5px; }
+.review-metrics-compact .review-state i { width: 9px; height: 9px; }
+.review-metrics-compact .review-findings { gap: 5px; }
+.review-metrics-compact .review-finding-badges { gap: 3px; }
+.review-metrics-compact .review-finding-badges > span { min-width: 12px; padding: 2px 3px; font-size: 10px; }
 .project-review-header > .project-remove { position: relative; z-index: 2; flex-shrink: 0; }
 .project-review-entry .project-remove { box-sizing: border-box; height: 32px; min-height: 32px; width: 32px; padding: 5px; }
 

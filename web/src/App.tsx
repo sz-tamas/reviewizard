@@ -573,7 +573,6 @@ export default function App({ initialSelection }: { initialSelection?: InitialRe
 
       {showCompletion && review && <CompleteReviewModal
         key={review.id}
-        repo={repo}
         repoPath={review.repoPath}
         vars={{ origin: window.location.origin, reviewId: review.id, headRef: review.headRef, baseRef: review.baseRef, side, fromRef: from, mode: review.scopeMode }}
         stats={{ ...reviewStats, completed: review.status === "completed" }}

@@ -4,11 +4,12 @@ export interface ReviewStatsProps {
   openCommentCount: number;
   findingCounts?: { bugs: number; suggestions: number; other: number };
   completed: boolean;
+  compact?: boolean;
 }
 
-export function ReviewStats({ fileCount, reviewedCount = 0, openCommentCount, findingCounts, completed }: ReviewStatsProps) {
+export function ReviewStats({ fileCount, reviewedCount = 0, openCommentCount, findingCounts, completed, compact }: ReviewStatsProps) {
   const percent = fileCount ? Math.round(reviewedCount / fileCount * 100) : 0;
-  return <div className="review-metrics">
+  return <div className={compact ? "review-metrics review-metrics-compact" : "review-metrics"}>
     <div className="review-metric">
       <span>Files reviewed</span>
       <strong>{reviewedCount} / {fileCount} ({percent}%)</strong>

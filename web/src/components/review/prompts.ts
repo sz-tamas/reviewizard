@@ -15,7 +15,7 @@ export interface PromptVars extends ReviewVars {
   repoPath: string;
 }
 
-const CONNECTION_GUIDANCE = "Run the HTTP commands from a local terminal tool on the same machine as reviewizard. A sandbox connection failure (including curl exit 7) does not prove the server is down. If local network access is restricted, use your agent tool’s approval/escalation mechanism to request access to this exact origin and retry the failed read before stopping. In Codex, retry the terminal command with sandbox_permissions=require_escalated and a scoped justification when supported; follow the session’s approval policy. Do not bypass a denial or disable sandboxing globally. If access is denied or the retry still fails, report the URL, error and access limitation; do not assume the user needs to start the server. A remote/cloud agent’s localhost refers to its own machine and cannot reach the user’s local service. Never change the saved review scope or silently switch to another endpoint.";
+const CONNECTION_GUIDANCE = "Use an agent session with access to the repository and run the HTTP commands from a terminal on the same machine as reviewizard. If the connection fails (including curl exit 7), check whether your tool restricts local network access. If needed, use your tool’s approval mechanism to request access to this exact origin and retry the failed read. If access is denied or the retry still fails, report the URL, error and any access restriction. Use the supplied endpoint and saved review scope throughout.";
 
 export const AGENT_PROMPTS = [{
   kind: "reply" as const,
@@ -52,11 +52,11 @@ export interface HandoffOptions {
 export const HANDOFF_FORMATS: { value: HandoffFormat; label: string; instruction: string; author: string }[] = [
   { value: "codex-cli", label: "Codex (desktop / CLI)", instruction: "Use this assignment in your local Codex desktop app or Codex CLI session. Work in the repository below and use your terminal tools to inspect the saved comparison and report findings.", author: "codex-review-agent" },
   { value: "claude-code", label: "Claude Code", instruction: "Use this assignment in your Claude Code session. Inspect the repository with your available tools and report findings against the saved comparison below.", author: "claude-review-agent" },
-  { value: "markdown", label: "Markdown", instruction: "Review the repository using this Markdown assignment and report findings against the saved comparison below.", author: "review-agent" },
+  { value: "markdown", label: "Generic agent (Markdown)", instruction: "Use this assignment in a local agent session. Inspect the repository and report findings against the saved comparison below.", author: "review-agent" },
   { value: "json", label: "JSON handoff", instruction: "Use this structured assignment to inspect the saved comparison and report findings.", author: "review-agent" },
 ];
 export const DEFAULT_HANDOFF_OPTIONS: HandoffOptions = {
-  lenses: ["correctness", "security"], minimumSeverity: "medium", format: "codex-cli",
+  lenses: ["correctness", "security"], minimumSeverity: "medium", format: "markdown",
 };
 const SEVERITIES: MinimumSeverity[] = ["low", "medium", "high"];
 const SEVERITY_GUIDE = "High: exploitable security exposure, data loss, outages or severe correctness failures. Medium: user-visible bugs, meaningful performance regressions or consequential design/test/maintenance risks. Low: smaller actionable issues with a concrete impact.";

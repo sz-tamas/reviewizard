@@ -71,7 +71,8 @@
 .project-secondary,
 .project-remove { min-height: 32px; padding: 6px 12px; gap: 7px; font-size: 12px; border-radius: 7px; }
 .project-primary,
-.review-action-primary {
+.review-action-primary,
+.completion-card-action > .btn:enabled:is(:hover, :focus-visible) {
   color: var(--brand-accent-ink);
   border-color: #57bfb0;
   background: linear-gradient(180deg, var(--brand-accent), #269c8e);

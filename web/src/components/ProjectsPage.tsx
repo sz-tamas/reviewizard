@@ -198,7 +198,7 @@ function SavedReviewCard({ review, repoName }: { review: Review; repoName: strin
     </div>
     {stats.isPending && <p role="status">Loading review statistics…</p>}
     {stats.error && <p className="project-error" role="alert">Unable to load review statistics: {stats.error.message}</p>}
-    {stats.data && <ReviewStats {...stats.data} completed={review.status === "completed"} />}
+    {stats.data && <ReviewStats {...stats.data} compact completed={review.status === "completed"} />}
     {removing && <Modal title="Remove review?" className="modal-sm" close="none" onClose={() => { if (!pending) setRemoving(false); }}>
       <div className="confirm-body">
         <p>Remove <strong>{review.headRef}</strong> and its findings? This can't be undone.</p>
